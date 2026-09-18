@@ -3,41 +3,58 @@ import type {
   MaterialNeed,
   PlanConnection,
   PlanObject,
+  StockInfo,
   WarehouseItem,
 } from './types';
 import { normalize, round } from './utils';
 
 /**
- * PLANO -> MATERIAL -> ALMACEN
+ * PLANO → MATERIAL → ALMACÉN
  *
- * Genera el listado de material necesario a partir de los objetos del plano y
- * de los cables dibujados, y lo compara con las existencias del almacen.
+ * Desde el modelo «almacén primero», cada objeto del plano apunta normalmente a
+ * un artículo concreto del almacén (`warehouse_item_id`). El listado agrupa por
+ * ese artículo y compara lo que hace falta con las existencias:
  *
- * Emparejamiento con el almacen, por orden de prioridad:
- *   1. El objeto del plano apunta a una unidad concreta (warehouse_item_id).
- *   2. El articulo del almacen deriva del mismo objeto de biblioteca (catalog_id).
- *   3. Coincidencia por nombre normalizado (sin acentos ni mayusculas).
+ *     necesarias 5 · en almacén 4 · FALTA 1  →  hay que conseguir o alquilar 1
+ *
+ * Los objetos sin artículo de almacén (figuras sueltas o piezas creadas para el
+ * evento en la biblioteca) se agrupan por nombre y no tienen existencias: se
+ * listan aparte como material propio del evento.
  */
+
+/** Unidades de cada artículo del almacén ya comprometidas en el plano. */
+export function computeStock(
+  items: WarehouseItem[],
+  planObjects: PlanObject[],
+): Map<string, StockInfo> {
+  const used = new Map<string, number>();
+  for (const o of planObjects) {
+    if (!o.warehouse_item_id) continue;
+    used.set(o.warehouse_item_id, (used.get(o.warehouse_item_id) ?? 0) + 1);
+  }
+
+  const stock = new Map<string, StockInfo>();
+  for (const item of items) {
+    const total = Number(item.quantity) || 0;
+    const u = used.get(item.id) ?? 0;
+    stock.set(item.id, { total, used: u, available: total - u });
+  }
+  return stock;
+}
+
 export function computeMaterialNeeds(
   objects: PlanObject[],
   connections: PlanConnection[],
   catalog: CatalogObject[],
   items: WarehouseItem[],
 ): MaterialNeed[] {
+  const itemById = new Map(items.map((i) => [i.id, i]));
   const catalogById = new Map(catalog.map((c) => [c.id, c]));
 
-  const byCatalog = new Map<string, WarehouseItem[]>();
   const byName = new Map<string, WarehouseItem[]>();
   for (const it of items) {
-    if (it.catalog_id) {
-      const list = byCatalog.get(it.catalog_id) ?? [];
-      list.push(it);
-      byCatalog.set(it.catalog_id, list);
-    }
     const key = normalize(it.name);
-    const list = byName.get(key) ?? [];
-    list.push(it);
-    byName.set(key, list);
+    byName.set(key, [...(byName.get(key) ?? []), it]);
   }
 
   const needs = new Map<string, MaterialNeed>();
@@ -46,13 +63,11 @@ export function computeMaterialNeeds(
     key: string,
     base: Omit<MaterialNeed, 'needed' | 'available' | 'missing' | 'totalWeightKg' | 'totalVolumeM3'>,
     qty: number,
-    weight: number,
     volume: number,
   ) => {
     const existing = needs.get(key);
     if (existing) {
       existing.needed = round(existing.needed + qty, 2);
-      existing.totalWeightKg = round(existing.totalWeightKg + weight, 2);
       existing.totalVolumeM3 = round(existing.totalVolumeM3 + volume, 4);
       return;
     }
@@ -61,16 +76,22 @@ export function computeMaterialNeeds(
       needed: round(qty, 2),
       available: 0,
       missing: 0,
-      totalWeightKg: round(weight, 2),
+      totalWeightKg: 0,
       totalVolumeM3: round(volume, 4),
     });
   };
 
   // --- Objetos del plano ---------------------------------------------------
   for (const o of objects) {
+    const item = o.warehouse_item_id ? itemById.get(o.warehouse_item_id) : undefined;
     const cat = o.catalog_id ? catalogById.get(o.catalog_id) : undefined;
-    const name = cat?.name || o.label || 'Objeto sin nombre';
-    const key = o.catalog_id ? `cat:${o.catalog_id}` : `free:${normalize(name)}`;
+
+    const name = item?.name || cat?.name || o.label || 'Objeto sin nombre';
+    const key = item
+      ? `item:${item.id}`
+      : cat
+        ? `cat:${cat.id}`
+        : `free:${normalize(name)}`;
 
     add(
       key,
@@ -78,12 +99,11 @@ export function computeMaterialNeeds(
         key,
         name,
         catalogId: o.catalog_id,
-        categoryId: cat?.category_id ?? o.category_id,
-        unit: 'ud',
-        warehouseItemId: o.warehouse_item_id,
+        categoryId: item?.category_id ?? cat?.category_id ?? o.category_id,
+        unit: item?.unit ?? 'ud',
+        warehouseItemId: item?.id ?? null,
       },
       1,
-      Number(o.weight_kg) || 0,
       (Number(o.length_m) || 0) * (Number(o.width_m) || 0) * (Number(o.height_m) || 0),
     );
   }
@@ -91,55 +111,45 @@ export function computeMaterialNeeds(
   // --- Cables (metros lineales) -------------------------------------------
   for (const c of connections) {
     const label =
-      c.cable_type?.trim() ||
-      (c.kind === 'power' ? 'Cable eléctrico' : 'Cable Ethernet Cat6');
+      c.cable_type?.trim() || (c.kind === 'power' ? 'Cable eléctrico' : 'Cable Ethernet Cat6');
     const key = `cable:${c.kind}:${normalize(label)}`;
     add(
       key,
-      {
-        key,
-        name: label,
-        catalogId: null,
-        categoryId: null,
-        unit: 'm',
-        warehouseItemId: null,
-      },
+      { key, name: label, catalogId: null, categoryId: null, unit: 'm', warehouseItemId: null },
       Number(c.length_m) || 0,
-      0,
       0,
     );
   }
 
-  // --- Cruce con el almacen ------------------------------------------------
-  const result = [...needs.values()].map((need) => {
-    let available = 0;
+  // --- Cruce con el almacén ------------------------------------------------
+  return [...needs.values()]
+    .map((need) => {
+      let available = 0;
 
-    if (need.warehouseItemId) {
-      const it = items.find((i) => i.id === need.warehouseItemId);
-      available = it ? Number(it.quantity) : 0;
-    } else if (need.catalogId && byCatalog.has(need.catalogId)) {
-      available = byCatalog.get(need.catalogId)!.reduce((s, i) => s + Number(i.quantity), 0);
-    } else {
-      const matches = byName.get(normalize(need.name));
-      if (matches) available = matches.reduce((s, i) => s + Number(i.quantity), 0);
-    }
+      if (need.warehouseItemId) {
+        available = Number(itemById.get(need.warehouseItemId)?.quantity ?? 0);
+      } else {
+        // Los cables y los objetos sueltos se intentan casar por nombre.
+        const matches = byName.get(normalize(need.name));
+        if (matches) available = matches.reduce((s, i) => s + Number(i.quantity), 0);
+      }
 
-    return {
-      ...need,
-      available: round(available, 2),
-      missing: round(Math.max(0, need.needed - available), 2),
-    };
-  });
-
-  return result.sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name, 'es'));
+      return {
+        ...need,
+        available: round(available, 2),
+        missing: round(Math.max(0, need.needed - available), 2),
+      };
+    })
+    .sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name, 'es'));
 }
 
 export interface MaterialSummary {
   lines: number;
   totalNeeded: number;
   totalMissing: number;
+  /** Referencias en las que no llega el stock (lo que habría que alquilar). */
+  shortLines: number;
   coverage: number;
-  totalWeightKg: number;
   totalVolumeM3: number;
 }
 
@@ -150,11 +160,8 @@ export function summarizeMaterial(needs: MaterialNeed[]): MaterialSummary {
     lines: needs.length,
     totalNeeded: round(totalNeeded, 2),
     totalMissing: round(totalMissing, 2),
+    shortLines: needs.filter((n) => n.missing > 0).length,
     coverage: totalNeeded > 0 ? round(((totalNeeded - totalMissing) / totalNeeded) * 100, 1) : 100,
-    totalWeightKg: round(
-      needs.reduce((s, n) => s + n.totalWeightKg, 0),
-      2,
-    ),
     totalVolumeM3: round(
       needs.reduce((s, n) => s + n.totalVolumeM3, 0),
       3,
@@ -164,7 +171,7 @@ export function summarizeMaterial(needs: MaterialNeed[]): MaterialSummary {
 
 /** Exporta el listado a CSV (separador ';' para Excel en español). */
 export function materialToCsv(needs: MaterialNeed[], categoryName: (id: string | null) => string) {
-  const header = ['Categoría', 'Material', 'Necesario', 'Unidad', 'En almacén', 'Faltan', 'Peso (kg)'];
+  const header = ['Categoría', 'Material', 'Necesario', 'Unidad', 'En almacén', 'Faltan'];
   const rows = needs.map((n) => [
     categoryName(n.categoryId),
     n.name,
@@ -172,7 +179,6 @@ export function materialToCsv(needs: MaterialNeed[], categoryName: (id: string |
     n.unit,
     String(n.available).replace('.', ','),
     String(n.missing).replace('.', ','),
-    String(n.totalWeightKg).replace('.', ','),
   ]);
   return [header, ...rows].map((r) => r.map((c) => `"${c}"`).join(';')).join('\r\n');
 }

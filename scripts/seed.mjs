@@ -8,8 +8,7 @@
  *   1. Los cuatro perfiles del equipo (usuarios reales de Supabase Auth).
  *   2. Un almacén de ejemplo: material, categorías y cajas con contenido.
  *   3. "Evento Demo 2026" completo: plano con objetos y cableado (con errores
- *      intencionados para ver el detector de incidencias), horarios, tareas y
- *      una carga de transporte.
+ *      intencionados para ver el detector de incidencias), horarios y tareas.
  *
  * Uso:
  *     npm run seed              (crea lo que falte, no duplica nada)
@@ -82,30 +81,33 @@ const CAT = {
   decoracion: 'a0000000-0000-4000-8000-000000000005',
   herramientas: 'a0000000-0000-4000-8000-000000000006',
 };
-const OBJ = {
-  mesa: 'c0000000-0000-4000-8000-000000000001',
-  silla: 'c0000000-0000-4000-8000-000000000003',
-  barra: 'c0000000-0000-4000-8000-000000000005',
-  mostrador: 'c0000000-0000-4000-8000-000000000007',
-  pc: 'c0000000-0000-4000-8000-000000000010',
-  monitor: 'c0000000-0000-4000-8000-000000000011',
-  pantalla: 'c0000000-0000-4000-8000-000000000012',
-  proyector: 'c0000000-0000-4000-8000-000000000013',
-  altavoz: 'c0000000-0000-4000-8000-000000000014',
-  cuadro: 'c0000000-0000-4000-8000-000000000020',
-  toma: 'c0000000-0000-4000-8000-000000000021',
-  regleta6: 'c0000000-0000-4000-8000-000000000022',
-  regleta4: 'c0000000-0000-4000-8000-000000000023',
-  alarg10: 'c0000000-0000-4000-8000-000000000024',
-  alarg25: 'c0000000-0000-4000-8000-000000000025',
-  switch8: 'c0000000-0000-4000-8000-000000000030',
-  switch24: 'c0000000-0000-4000-8000-000000000031',
-  router: 'c0000000-0000-4000-8000-000000000032',
-  puntoRed: 'c0000000-0000-4000-8000-000000000034',
-  planta: 'c0000000-0000-4000-8000-000000000040',
-  photocall: 'c0000000-0000-4000-8000-000000000041',
+/**
+ * Desde el modelo «almacén primero» ya no hay catálogo de sistema: cada objeto
+ * del plano apunta a una referencia REAL del almacén. Aquí solo se guardan los
+ * nombres, que es como se localizan luego los identificadores creados.
+ */
+const ITEM = {
+  mesa: 'Mesa rectangular 2 m',
+  silla: 'Silla plegable',
+  mostrador: 'Mostrador recepción',
+  pc: 'PC sobremesa',
+  monitor: 'Monitor 27"',
+  pantalla: 'Pantalla 55"',
+  proyector: 'Proyector',
+  altavoz: 'Altavoz activo',
+  cuadro: 'Cuadro eléctrico',
+  toma: 'Toma de pared',
+  regleta6: 'Regleta 6 tomas',
+  regleta4: 'Regleta 4 tomas',
+  alarg10: 'Alargadera 10 m',
+  alarg25: 'Alargadera 25 m',
+  switch8: 'Switch 8 puertos',
+  switch24: 'Switch 24 puertos',
+  router: 'Router',
+  puntoRed: 'Punto de red',
+  planta: 'Planta decorativa',
+  photocall: 'Photocall 3×2,4 m',
 };
-const VEHICLE_TRANSIT = 'b0000000-0000-4000-8000-000000000002';
 
 const PEOPLE = [
   { slug: 'juan', name: 'Juan Martín', role: 'Producción', color: '#6366f1', admin: true },
@@ -187,29 +189,32 @@ async function seedProfiles() {
 // ---------------------------------------------------------------------------
 // 2. ALMACÉN
 // ---------------------------------------------------------------------------
+// [nombre, categoría, unidades, unidad, largo, ancho, alto, ubicación, código, extra]
+// El "extra" describe cómo se dibuja y cómo se comporta en el análisis.
 const ITEMS = [
-  ['Mesa rectangular 2 m', CAT.mobiliario, OBJ.mesa, 14, 'ud', 2, 0.8, 0.75, 18, 'Nave A · Estante 1', 'MOB-MES-200'],
-  ['Silla plegable', CAT.mobiliario, OBJ.silla, 80, 'ud', 0.45, 0.45, 0.9, 4.5, 'Nave A · Estante 2', 'MOB-SIL-001'],
-  ['Mostrador recepción', CAT.mobiliario, OBJ.mostrador, 2, 'ud', 1.8, 0.7, 1.05, 40, 'Nave A · Suelo', 'MOB-MOS-180'],
-  ['PC sobremesa', CAT.av, OBJ.pc, 6, 'ud', 0.2, 0.45, 0.45, 9, 'Nave B · Rack 1', 'AV-PC-001'],
-  ['Monitor 27"', CAT.av, OBJ.monitor, 8, 'ud', 0.62, 0.2, 0.48, 5, 'Nave B · Rack 1', 'AV-MON-027'],
-  ['Pantalla 55"', CAT.av, OBJ.pantalla, 3, 'ud', 1.24, 0.08, 0.72, 18, 'Nave B · Suelo', 'AV-PAN-055'],
-  ['Proyector', CAT.av, OBJ.proyector, 2, 'ud', 0.38, 0.3, 0.12, 6, 'Nave B · Rack 2', 'AV-PRO-001'],
-  ['Altavoz activo', CAT.av, OBJ.altavoz, 4, 'ud', 0.35, 0.32, 0.6, 14, 'Nave B · Suelo', 'AV-ALT-001'],
-  ['Cuadro eléctrico', CAT.electrico, OBJ.cuadro, 2, 'ud', 0.4, 0.2, 0.6, 12, 'Nave C · Estante 1', 'ELE-CUA-001'],
-  ['Regleta 6 tomas', CAT.electrico, OBJ.regleta6, 6, 'ud', 0.4, 0.06, 0.05, 0.6, 'Nave C · Caja CABLES-01', 'ELE-REG-006'],
-  ['Regleta 4 tomas', CAT.electrico, OBJ.regleta4, 4, 'ud', 0.3, 0.06, 0.05, 0.45, 'Nave C · Caja CABLES-01', 'ELE-REG-004'],
-  ['Alargadera 10 m', CAT.electrico, OBJ.alarg10, 5, 'ud', 0.25, 0.25, 0.12, 2.2, 'Nave C · Caja CABLES-01', 'ELE-ALA-010'],
-  ['Alargadera 25 m', CAT.electrico, OBJ.alarg25, 2, 'ud', 0.3, 0.3, 0.15, 4.5, 'Nave C · Suelo', 'ELE-ALA-025'],
-  ['Manguera 3G1.5', CAT.electrico, null, 120, 'm', 0, 0, 0, 0.1, 'Nave C · Bobina 1', 'ELE-CAB-315'],
-  ['Switch 8 puertos', CAT.redes, OBJ.switch8, 2, 'ud', 0.2, 0.12, 0.04, 0.6, 'Nave B · Rack 2', 'RED-SWI-008'],
-  ['Switch 24 puertos', CAT.redes, OBJ.switch24, 1, 'ud', 0.44, 0.2, 0.044, 3.2, 'Nave B · Rack 2', 'RED-SWI-024'],
-  ['Router', CAT.redes, OBJ.router, 1, 'ud', 0.25, 0.18, 0.05, 0.9, 'Nave B · Rack 2', 'RED-ROU-001'],
-  ['Punto de red', CAT.redes, OBJ.puntoRed, 10, 'ud', 0.1, 0.05, 0.1, 0.2, 'Nave C · Caja CABLES-01', 'RED-PUN-001'],
-  ['Cat6 U/UTP', CAT.redes, null, 200, 'm', 0, 0, 0, 0.04, 'Nave C · Bobina 2', 'RED-CAB-CAT6'],
-  ['Planta decorativa', CAT.decoracion, OBJ.planta, 6, 'ud', 0.6, 0.6, 1.4, 12, 'Nave A · Suelo', 'DEC-PLA-001'],
-  ['Photocall 3×2,4 m', CAT.decoracion, OBJ.photocall, 1, 'ud', 3, 0.4, 2.4, 28, 'Nave A · Suelo', 'DEC-PHO-300'],
-  ['Caja de herramientas', CAT.herramientas, null, 2, 'ud', 0.5, 0.25, 0.25, 11, 'Nave C · Estante 2', 'HER-CAJ-001'],
+  ['Mesa rectangular 2 m', CAT.mobiliario, 14, 'ud', 2, 0.8, 0.75, 'Nave A · Estante 1', 'MOB-MES-200', { kind: 'furniture', color: '#a3a3a3' }],
+  ['Silla plegable', CAT.mobiliario, 80, 'ud', 0.45, 0.45, 0.9, 'Nave A · Estante 2', 'MOB-SIL-001', { kind: 'furniture', color: '#a3a3a3' }],
+  ['Mostrador recepción', CAT.mobiliario, 2, 'ud', 1.8, 0.7, 1.05, 'Nave A · Suelo', 'MOB-MOS-180', { kind: 'furniture', color: '#a3a3a3' }],
+  ['PC sobremesa', CAT.av, 6, 'ud', 0.2, 0.45, 0.45, 'Nave B · Rack 1', 'AV-PC-001', { kind: 'av', color: '#60a5fa', requires_power: true, requires_network: true, power_w: 250 }],
+  ['Monitor 27"', CAT.av, 8, 'ud', 0.62, 0.2, 0.48, 'Nave B · Rack 1', 'AV-MON-027', { kind: 'av', color: '#60a5fa', requires_power: true, power_w: 40 }],
+  ['Pantalla 55"', CAT.av, 3, 'ud', 1.24, 0.08, 0.72, 'Nave B · Suelo', 'AV-PAN-055', { kind: 'av', color: '#60a5fa', requires_power: true, requires_network: true, power_w: 140 }],
+  ['Proyector', CAT.av, 2, 'ud', 0.38, 0.3, 0.12, 'Nave B · Rack 2', 'AV-PRO-001', { kind: 'av', color: '#60a5fa', requires_power: true, power_w: 320 }],
+  ['Altavoz activo', CAT.av, 4, 'ud', 0.35, 0.32, 0.6, 'Nave B · Suelo', 'AV-ALT-001', { kind: 'av', color: '#60a5fa', requires_power: true, power_w: 180 }],
+  ['Cuadro eléctrico', CAT.electrico, 2, 'ud', 0.4, 0.2, 0.6, 'Nave C · Estante 1', 'ELE-CUA-001', { kind: 'power_source', color: '#f59e0b', outlet_count: 12 }],
+  ['Toma de pared', CAT.electrico, 8, 'ud', 0.12, 0.05, 0.12, 'Fija en la sala', 'ELE-TOM-001', { kind: 'power_source', color: '#f59e0b', outlet_count: 2 }],
+  ['Regleta 6 tomas', CAT.electrico, 6, 'ud', 0.4, 0.06, 0.05, 'Nave C · Caja CABLES-01', 'ELE-REG-006', { kind: 'power_strip', color: '#fbbf24', requires_power: true, outlet_count: 6 }],
+  ['Regleta 4 tomas', CAT.electrico, 4, 'ud', 0.3, 0.06, 0.05, 'Nave C · Caja CABLES-01', 'ELE-REG-004', { kind: 'power_strip', color: '#fbbf24', requires_power: true, outlet_count: 4 }],
+  ['Alargadera 10 m', CAT.electrico, 5, 'ud', 0.25, 0.25, 0.12, 'Nave C · Caja CABLES-01', 'ELE-ALA-010', { kind: 'power_strip', color: '#fbbf24', requires_power: true, outlet_count: 1 }],
+  ['Alargadera 25 m', CAT.electrico, 2, 'ud', 0.3, 0.3, 0.15, 'Nave C · Suelo', 'ELE-ALA-025', { kind: 'power_strip', color: '#fbbf24', requires_power: true, outlet_count: 1 }],
+  ['Manguera 3G1.5', CAT.electrico, 120, 'm', 0.1, 0.1, 0.1, 'Nave C · Bobina 1', 'ELE-CAB-315', { kind: 'tool', color: '#f59e0b' }],
+  ['Switch 8 puertos', CAT.redes, 2, 'ud', 0.2, 0.12, 0.04, 'Nave B · Rack 2', 'RED-SWI-008', { kind: 'network_switch', color: '#22d3ee', requires_power: true, power_w: 12, port_count: 8 }],
+  ['Switch 24 puertos', CAT.redes, 1, 'ud', 0.44, 0.2, 0.044, 'Nave B · Rack 2', 'RED-SWI-024', { kind: 'network_switch', color: '#22d3ee', requires_power: true, power_w: 30, port_count: 24 }],
+  ['Router', CAT.redes, 1, 'ud', 0.25, 0.18, 0.05, 'Nave B · Rack 2', 'RED-ROU-001', { kind: 'network_router', color: '#06b6d4', requires_power: true, power_w: 18, port_count: 4 }],
+  ['Punto de red', CAT.redes, 10, 'ud', 0.1, 0.05, 0.1, 'Nave C · Caja CABLES-01', 'RED-PUN-001', { kind: 'network_node', color: '#22d3ee', port_count: 1 }],
+  ['Cat6 U/UTP', CAT.redes, 200, 'm', 0.1, 0.1, 0.1, 'Nave C · Bobina 2', 'RED-CAB-CAT6', { kind: 'tool', color: '#22d3ee' }],
+  ['Planta decorativa', CAT.decoracion, 6, 'ud', 0.6, 0.6, 1.4, 'Nave A · Suelo', 'DEC-PLA-001', { kind: 'decor', color: '#4ade80', shape: 'cylinder' }],
+  ['Photocall 3×2,4 m', CAT.decoracion, 1, 'ud', 3, 0.4, 2.4, 'Nave A · Suelo', 'DEC-PHO-300', { kind: 'decor', color: '#c084fc' }],
+  ['Caja de herramientas', CAT.herramientas, 2, 'ud', 0.5, 0.25, 0.25, 'Nave C · Estante 2', 'HER-CAJ-001', { kind: 'tool', color: '#94a3b8' }],
 ];
 
 async function seedWarehouse() {
@@ -219,7 +224,7 @@ async function seedWarehouse() {
   const byName = new Map(existing.map((i) => [i.name, i.id]));
   const itemIds = {};
 
-  for (const [name, categoryId, catalogId, qty, unit, l, w, h, kg, location, code] of ITEMS) {
+  for (const [name, categoryId, qty, unit, l, w, h, location, code, extra] of ITEMS) {
     if (byName.has(name)) {
       itemIds[name] = byName.get(name);
       continue;
@@ -230,15 +235,14 @@ async function seedWarehouse() {
         .insert({
           name,
           category_id: categoryId,
-          catalog_id: catalogId,
           quantity: qty,
           unit,
           length_m: l,
           width_m: w,
           height_m: h,
-          weight_kg: kg,
           location,
           internal_code: code,
+          ...extra,
         })
         .select('id')
         .single(),
@@ -364,7 +368,7 @@ async function seedDemoEvent(profileIds, itemIds) {
       .insert({
         name: EVENT_NAME,
         description:
-          'Evento de demostración con plano, cableado eléctrico y de red, horarios, tareas y transporte. Incluye errores intencionados para probar el detector de incidencias.',
+          'Evento de demostración con plano, cableado eléctrico y de red, horarios y tareas. Incluye errores intencionados para probar el detector de incidencias.',
         location: 'Madrid · IFEMA Pabellón 5',
         starts_at: start.toISOString(),
         ends_at: end.toISOString(),
@@ -449,62 +453,62 @@ async function seedDemoEvent(profileIds, itemIds) {
   const objects = [
     // Electricidad
     o('cuadro', {
-      catalog_id: OBJ.cuadro, label: 'Cuadro eléctrico', kind: 'power_source', category_id: CAT.electrico,
+      warehouse_item_id: itemIds[ITEM.cuadro] ?? null, label: 'Cuadro eléctrico', kind: 'power_source', category_id: CAT.electrico,
       x: 1, y: 1, length_m: 0.4, width_m: 0.2, height_m: 0.6, weight_kg: 12, color: '#f59e0b',
       outlet_count: 8,
     }),
     o('toma', {
-      catalog_id: OBJ.toma, label: 'Toma de pared', kind: 'power_source', category_id: CAT.electrico,
+      warehouse_item_id: itemIds[ITEM.toma] ?? null, label: 'Toma de pared', kind: 'power_source', category_id: CAT.electrico,
       x: 19, y: 1, length_m: 0.1, width_m: 0.05, height_m: 0.1, weight_kg: 0.2, color: '#fbbf24',
       outlet_count: 2,
     }),
     o('regletaA', {
-      catalog_id: OBJ.regleta6, label: 'Regleta A (control)', kind: 'power_strip', category_id: CAT.electrico,
+      warehouse_item_id: itemIds[ITEM.regleta6] ?? null, label: 'Regleta A (control)', kind: 'power_strip', category_id: CAT.electrico,
       x: 5, y: 5.5, length_m: 0.4, width_m: 0.06, height_m: 0.05, weight_kg: 0.6, color: '#fbbf24',
       outlet_count: 6,
     }),
     o('regletaB', {
-      catalog_id: OBJ.regleta6, label: 'Regleta B (escenario)', kind: 'power_strip', category_id: CAT.electrico,
+      warehouse_item_id: itemIds[ITEM.regleta6] ?? null, label: 'Regleta B (escenario)', kind: 'power_strip', category_id: CAT.electrico,
       x: 12, y: 4, length_m: 0.4, width_m: 0.06, height_m: 0.05, weight_kg: 0.6, color: '#fbbf24',
       outlet_count: 6,
     }),
     o('regletaC', {
       // ERROR INTENCIONADO: esta regleta no está conectada a ninguna fuente.
-      catalog_id: OBJ.regleta4, label: 'Regleta C (photocall)', kind: 'power_strip', category_id: CAT.electrico,
+      warehouse_item_id: itemIds[ITEM.regleta4] ?? null, label: 'Regleta C (photocall)', kind: 'power_strip', category_id: CAT.electrico,
       x: 4, y: 11.5, length_m: 0.3, width_m: 0.06, height_m: 0.05, weight_kg: 0.45, color: '#fbbf24',
       outlet_count: 4,
     }),
 
     // Red
     o('router', {
-      catalog_id: OBJ.router, label: 'Router', kind: 'network_router', category_id: CAT.redes,
+      warehouse_item_id: itemIds[ITEM.router] ?? null, label: 'Router', kind: 'network_router', category_id: CAT.redes,
       x: 4.2, y: 5, length_m: 0.25, width_m: 0.18, height_m: 0.05, weight_kg: 0.9, color: '#0891b2',
       requires_power: true, power_w: 18, port_count: 4,
     }),
     o('switch', {
-      catalog_id: OBJ.switch8, label: 'Switch principal', kind: 'network_switch', category_id: CAT.redes,
+      warehouse_item_id: itemIds[ITEM.switch8] ?? null, label: 'Switch principal', kind: 'network_switch', category_id: CAT.redes,
       x: 5.6, y: 5, length_m: 0.2, width_m: 0.12, height_m: 0.04, weight_kg: 0.6, color: '#22d3ee',
       requires_power: true, power_w: 12, port_count: 8,
     }),
 
     // Puesto de control
     o('mesaControl', {
-      catalog_id: OBJ.mesa, label: 'Mesa de control', kind: 'furniture', category_id: CAT.mobiliario,
+      warehouse_item_id: itemIds[ITEM.mesa] ?? null, label: 'Mesa de control', kind: 'furniture', category_id: CAT.mobiliario,
       x: 5, y: 6.6, length_m: 2, width_m: 0.8, height_m: 0.75, weight_kg: 18, color: '#a78bfa',
     }),
     o('pc1', {
-      catalog_id: OBJ.pc, warehouse_item_id: itemIds['PC sobremesa'] ?? null,
+      warehouse_item_id: itemIds[ITEM.pc] ?? null,
       label: 'PC Control 01', kind: 'av', category_id: CAT.av,
       x: 4.4, y: 6.6, z: 0.75, length_m: 0.2, width_m: 0.45, height_m: 0.45, weight_kg: 9, color: '#f472b6',
       requires_power: true, requires_network: true, power_w: 350,
     }),
     o('pc2', {
-      catalog_id: OBJ.pc, label: 'PC Control 02', kind: 'av', category_id: CAT.av,
+      warehouse_item_id: itemIds[ITEM.pc] ?? null, label: 'PC Control 02', kind: 'av', category_id: CAT.av,
       x: 5.6, y: 6.6, z: 0.75, length_m: 0.2, width_m: 0.45, height_m: 0.45, weight_kg: 9, color: '#f472b6',
       requires_power: true, requires_network: true, power_w: 350,
     }),
     o('monitor1', {
-      catalog_id: OBJ.monitor, label: 'Monitor control', kind: 'av', category_id: CAT.av,
+      warehouse_item_id: itemIds[ITEM.monitor] ?? null, label: 'Monitor control', kind: 'av', category_id: CAT.av,
       x: 5, y: 6.2, z: 0.75, length_m: 0.62, width_m: 0.2, height_m: 0.48, weight_kg: 5, color: '#ec4899',
       requires_power: true, power_w: 45,
     }),
@@ -513,22 +517,22 @@ async function seedDemoEvent(profileIds, itemIds) {
     o('pantalla', {
       // ERROR INTENCIONADO: alimentada desde la regleta C (que no tiene corriente)
       // y sin ningún cable de red.
-      catalog_id: OBJ.pantalla, label: 'Pantalla Principal', kind: 'av', category_id: CAT.av,
+      warehouse_item_id: itemIds[ITEM.pantalla] ?? null, label: 'Pantalla Principal', kind: 'av', category_id: CAT.av,
       x: 10, y: 1.4, length_m: 1.24, width_m: 0.08, height_m: 0.72, z: 1, weight_kg: 18, color: '#db2777',
       requires_power: true, requires_network: true, power_w: 120,
     }),
     o('proyector', {
-      catalog_id: OBJ.proyector, label: 'Proyector sala', kind: 'av', category_id: CAT.av,
+      warehouse_item_id: itemIds[ITEM.proyector] ?? null, label: 'Proyector sala', kind: 'av', category_id: CAT.av,
       x: 10, y: 7.5, z: 2.6, length_m: 0.38, width_m: 0.3, height_m: 0.12, weight_kg: 6, color: '#f472b6',
       requires_power: true, requires_network: true, power_w: 300,
     }),
     o('altavozL', {
-      catalog_id: OBJ.altavoz, label: 'Altavoz izquierdo', kind: 'av', category_id: CAT.av,
+      warehouse_item_id: itemIds[ITEM.altavoz] ?? null, label: 'Altavoz izquierdo', kind: 'av', category_id: CAT.av,
       x: 8, y: 2, length_m: 0.35, width_m: 0.32, height_m: 0.6, weight_kg: 14, color: '#ec4899',
       requires_power: true, power_w: 250,
     }),
     o('altavozR', {
-      catalog_id: OBJ.altavoz, label: 'Altavoz derecho', kind: 'av', category_id: CAT.av,
+      warehouse_item_id: itemIds[ITEM.altavoz] ?? null, label: 'Altavoz derecho', kind: 'av', category_id: CAT.av,
       x: 12, y: 2, length_m: 0.35, width_m: 0.32, height_m: 0.6, weight_kg: 14, color: '#ec4899',
       requires_power: true, power_w: 250,
     }),
@@ -539,14 +543,14 @@ async function seedDemoEvent(profileIds, itemIds) {
       [8, 11.5], [11, 11.5], [14, 11.5],
     ].map(([x, y], i) =>
       o(`mesa${i}`, {
-        catalog_id: OBJ.mesa, warehouse_item_id: itemIds['Mesa rectangular 2 m'] ?? null,
+        warehouse_item_id: itemIds[ITEM.mesa] ?? null,
         label: `Mesa ${i + 1}`, kind: 'furniture', category_id: CAT.mobiliario,
         x, y, length_m: 2, width_m: 0.8, height_m: 0.75, weight_kg: 18, color: '#a78bfa',
       }),
     ),
     ...Array.from({ length: 12 }, (_, i) =>
       o(`silla${i}`, {
-        catalog_id: OBJ.silla, label: `Silla ${i + 1}`, kind: 'furniture', category_id: CAT.mobiliario,
+        warehouse_item_id: itemIds[ITEM.silla] ?? null, label: `Silla ${i + 1}`, kind: 'furniture', category_id: CAT.mobiliario,
         x: 7.2 + (i % 6) * 1.5, y: i < 6 ? 8.6 : 10.6,
         length_m: 0.45, width_m: 0.45, height_m: 0.9, weight_kg: 4.5, color: '#8b5cf6',
       }),
@@ -554,19 +558,19 @@ async function seedDemoEvent(profileIds, itemIds) {
 
     // Recepción y decoración
     o('mostrador', {
-      catalog_id: OBJ.mostrador, label: 'Recepción', kind: 'furniture', category_id: CAT.mobiliario,
+      warehouse_item_id: itemIds[ITEM.mostrador] ?? null, label: 'Recepción', kind: 'furniture', category_id: CAT.mobiliario,
       x: 2.5, y: 2.5, rotation: 90, length_m: 1.8, width_m: 0.7, height_m: 1.05, weight_kg: 40, color: '#a78bfa',
     }),
     o('photocall', {
-      catalog_id: OBJ.photocall, label: 'Photocall entrada', kind: 'decor', category_id: CAT.decoracion,
+      warehouse_item_id: itemIds[ITEM.photocall] ?? null, label: 'Photocall entrada', kind: 'decor', category_id: CAT.decoracion,
       x: 3, y: 12.5, length_m: 3, width_m: 0.4, height_m: 2.4, weight_kg: 28, color: '#22c55e',
     }),
     o('planta1', {
-      catalog_id: OBJ.planta, label: 'Planta 1', kind: 'decor', category_id: CAT.decoracion, shape: 'cylinder',
+      warehouse_item_id: itemIds[ITEM.planta] ?? null, label: 'Planta 1', kind: 'decor', category_id: CAT.decoracion, shape: 'cylinder',
       x: 1.2, y: 6, length_m: 0.6, width_m: 0.6, height_m: 1.4, weight_kg: 12, color: '#4ade80',
     }),
     o('planta2', {
-      catalog_id: OBJ.planta, label: 'Planta 2', kind: 'decor', category_id: CAT.decoracion, shape: 'cylinder',
+      warehouse_item_id: itemIds[ITEM.planta] ?? null, label: 'Planta 2', kind: 'decor', category_id: CAT.decoracion, shape: 'cylinder',
       x: 18.5, y: 6, length_m: 0.6, width_m: 0.6, height_m: 1.4, weight_kg: 12, color: '#4ade80',
     }),
   ];
@@ -704,78 +708,6 @@ async function seedDemoEvent(profileIds, itemIds) {
     'Crear las tareas',
   );
   ok(`${TASKS.length} tareas`);
-
-  // --- Transporte ----------------------------------------------------------
-  const load = must(
-    await db
-      .from('transport_loads')
-      .insert({
-        event_id: event.id,
-        vehicle_id: VEHICLE_TRANSIT,
-        name: 'Carga 1 · Furgoneta',
-        notes: 'Cargar primero las mesas al fondo; las cajas van encima.',
-      })
-      .select('id')
-      .single(),
-    'Crear la carga de transporte',
-  );
-
-  const boxes = must(
-    await db.from('warehouse_boxes').select('id, code, length_m, width_m, height_m, empty_weight_kg, color'),
-    'Leer las cajas para el transporte',
-  );
-  const boxByCode = Object.fromEntries(boxes.map((b) => [b.code, b]));
-
-  const cargo = [];
-  // Cuatro mesas al fondo, tumbadas.
-  for (let i = 0; i < 4; i++) {
-    cargo.push({
-      load_id: load.id, source_kind: 'item', item_id: itemIds['Mesa rectangular 2 m'] ?? null,
-      label: `Mesa ${i + 1}`, quantity: 1,
-      x: 0, y: 0, z: i * 0.1, rotation: 90,
-      length_m: 2, width_m: 0.8, height_m: 0.1, weight_kg: 18, color: '#a78bfa',
-    });
-  }
-  // Cajas apiladas.
-  let cursor = 0;
-  for (const code of ['CABLES-01', 'TECNICA-01', 'DECO-01']) {
-    const box = boxByCode[code];
-    if (!box) continue;
-    cargo.push({
-      load_id: load.id, source_kind: 'box', box_id: box.id, label: box.code, quantity: 1,
-      x: cursor, y: 0.9, z: 0, rotation: 0,
-      length_m: Number(box.length_m), width_m: Number(box.width_m), height_m: Number(box.height_m),
-      weight_kg: Number(box.empty_weight_kg) + 12, color: box.color,
-    });
-    cursor += Number(box.length_m) + 0.02;
-  }
-  // Photocall de pie contra el lateral.
-  cargo.push({
-    load_id: load.id, source_kind: 'item', item_id: itemIds['Photocall 3×2,4 m'] ?? null,
-    label: 'Photocall', quantity: 1,
-    x: 0, y: 1.45, z: 0, rotation: 90,
-    length_m: 3, width_m: 0.4, height_m: 0.25, weight_kg: 28, color: '#22c55e',
-  });
-
-  // Mismo motivo que en plan_objects: todas las filas con las mismas columnas.
-  const CARGO_DEFAULTS = {
-    item_id: null,
-    box_id: null,
-    label: '',
-    quantity: 1,
-    x: 0,
-    y: 0,
-    z: 0,
-    rotation: 0,
-    weight_kg: 0,
-    color: '#38bdf8',
-  };
-
-  must(
-    await db.from('transport_items').insert(cargo.map((c) => ({ ...CARGO_DEFAULTS, ...c }))),
-    'Crear los bultos de la carga',
-  );
-  ok(`Carga con ${cargo.length} bultos`);
 }
 
 // ---------------------------------------------------------------------------
@@ -784,21 +716,15 @@ async function main() {
   console.log(`${c.dim}Proyecto: ${SUPABASE_URL}${c.reset}`);
 
   // Comprobamos que las migraciones están aplicadas.
-  const check = await db.from('object_catalog').select('id').limit(1);
+  const check = await db.from('warehouse_items').select('id').limit(1);
   if (check.error) {
-    console.error(`\n${c.red}✗ No se puede leer la tabla object_catalog.${c.reset}
+    console.error(`\n${c.red}✗ No se puede leer la tabla warehouse_items.${c.reset}
   Aplica primero las migraciones de supabase/migrations/ en el SQL Editor
-  de Supabase (0001, 0002, 0003 y 0004, en ese orden).
+  de Supabase (0001 a 0006, en ese orden).
 
   Detalle: ${check.error.message}\n`);
     process.exit(1);
   }
-  if (!check.data?.length) {
-    console.error(`\n${c.red}✗ La biblioteca de objetos está vacía.${c.reset}
-  Ejecuta supabase/migrations/0003_catalog.sql antes de sembrar los datos.\n`);
-    process.exit(1);
-  }
-
   const profileIds = await seedProfiles();
 
   if (ONLY_USERS) {

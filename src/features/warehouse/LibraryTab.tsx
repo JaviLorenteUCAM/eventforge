@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Cable, Lock, Network, Pencil, Plus, Shapes, Trash2, Zap } from 'lucide-react';
+import { Cable, Copy, Network, Pencil, Plus, Shapes, Trash2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Badge,
@@ -9,22 +9,26 @@ import {
   EmptyState,
   LoadingState,
   SearchInput,
-  Segmented,
   Select,
 } from '@/components/ui';
-import { useCatalog, useCategories, useDeleteCatalogObject } from '@/data/warehouse';
+import {
+  useCatalog,
+  useCategories,
+  useCreateCatalogObject,
+  useDeleteCatalogObject,
+} from '@/data/warehouse';
 import { OBJECT_KIND_LABEL, type CatalogObject } from '@/lib/types';
-import { fmtKg, fmtNum, normalize } from '@/lib/utils';
+import { fmtNum, normalize } from '@/lib/utils';
 import { CatalogObjectModal } from './CatalogObjectModal';
 
 export function LibraryTab() {
   const catalog = useCatalog();
   const categories = useCategories();
   const remove = useDeleteCatalogObject();
+  const duplicate = useCreateCatalogObject();
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
-  const [origin, setOrigin] = useState<'all' | 'system' | 'custom'>('all');
   const [editing, setEditing] = useState<CatalogObject | null>(null);
   const [open, setOpen] = useState(false);
   const [toDelete, setToDelete] = useState<CatalogObject | null>(null);
@@ -38,12 +42,24 @@ export function LibraryTab() {
     const q = normalize(search);
     return (catalog.data ?? []).filter((o) => {
       if (category !== 'all' && o.category_id !== category) return false;
-      if (origin === 'system' && !o.is_system) return false;
-      if (origin === 'custom' && o.is_system) return false;
       if (q && !normalize(`${o.name} ${o.material} ${o.notes}`).includes(q)) return false;
       return true;
     });
-  }, [catalog.data, search, category, origin]);
+  }, [catalog.data, search, category]);
+
+  /** Copia un objeto de la biblioteca con todas sus características. */
+  async function handleDuplicate(o: CatalogObject) {
+    const { id, created_at, updated_at, name, ...rest } = o;
+    void id;
+    void created_at;
+    void updated_at;
+    try {
+      await duplicate.mutateAsync({ ...rest, name: `${name} (copia)` });
+      toast.success('Objeto duplicado');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se ha podido duplicar');
+    }
+  }
 
   async function handleDelete() {
     if (!toDelete) return;
@@ -73,16 +89,6 @@ export function LibraryTab() {
             </option>
           ))}
         </Select>
-        <Segmented
-          value={origin}
-          onChange={setOrigin}
-          size="sm"
-          options={[
-            { value: 'all', label: 'Todos' },
-            { value: 'system', label: 'Base' },
-            { value: 'custom', label: 'Propios' },
-          ]}
-        />
         <Button
           variant="primary"
           icon={<Plus className="size-4" />}
@@ -99,8 +105,8 @@ export function LibraryTab() {
         <LoadingState />
       ) : filtered.length === 0 ? (
         <EmptyState
-          title="Sin objetos"
-          message="Crea objetos personalizados con sus dimensiones reales para usarlos en los planos."
+          title={catalog.data?.length ? 'Nada coincide con la búsqueda' : 'La biblioteca está vacía'}
+          message="Aquí solo van los objetos puntuales de un evento: una alfombra a medida, un cartel, una estructura prestada. El material del que dispones habitualmente va en el Almacén, con sus unidades."
           icon={<Shapes className="size-5" />}
         />
       ) : (
@@ -118,37 +124,40 @@ export function LibraryTab() {
                     <p className="truncate text-[13.5px] font-medium text-ink">{o.name}</p>
                     <p className="truncate text-[11.5px] text-dim">{OBJECT_KIND_LABEL[o.kind]}</p>
                   </div>
-                  {o.is_system ? (
-                    <span title="Objeto del catálogo base">
-                      <Lock className="size-3.5 shrink-0 text-dim" />
-                    </span>
-                  ) : (
-                    <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        onClick={() => {
-                          setEditing(o);
-                          setOpen(true);
-                        }}
-                        aria-label="Editar"
-                        className="rounded-md p-1 text-dim hover:text-ink"
-                      >
-                        <Pencil className="size-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setToDelete(o)}
-                        aria-label="Eliminar"
-                        className="rounded-md p-1 text-dim hover:text-danger"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <button
+                      onClick={() => {
+                        setEditing(o);
+                        setOpen(true);
+                      }}
+                      aria-label="Editar"
+                      title="Editar"
+                      className="rounded-md p-1 text-dim hover:text-ink"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                    <button
+                      onClick={() => void handleDuplicate(o)}
+                      aria-label="Duplicar"
+                      title="Duplicar"
+                      className="rounded-md p-1 text-dim hover:text-ink"
+                    >
+                      <Copy className="size-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setToDelete(o)}
+                      aria-label="Eliminar"
+                      title="Eliminar"
+                      className="rounded-md p-1 text-dim hover:text-danger"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 <p className="num mt-2.5 text-[11.5px] text-muted">
                   {fmtNum(Number(o.length_m), 2)} × {fmtNum(Number(o.width_m), 2)} ×{' '}
                   {fmtNum(Number(o.height_m), 2)} m
-                  {Number(o.weight_kg) > 0 ? ` · ${fmtKg(Number(o.weight_kg))}` : ''}
                 </p>
 
                 <div className="mt-2 flex flex-wrap gap-1.5">

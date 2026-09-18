@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { NavLink, Outlet, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Boxes, CalendarDays, ClipboardList, Layers3, ListChecks, Truck } from 'lucide-react';
+import { Boxes, CalendarDays, ClipboardList, Layers3, ListChecks } from 'lucide-react';
 import { Badge, ErrorState, LoadingState } from '@/components/ui';
 import { useEvent } from '@/data/events';
 import { useCreatePlan, usePlans } from '@/data/plans';
@@ -16,7 +16,6 @@ const TABS = [
   { to: 'horarios', label: 'Horarios', icon: <CalendarDays className="size-4" /> },
   { to: 'material', label: 'Material', icon: <Boxes className="size-4" /> },
   { to: 'tareas', label: 'Tareas', icon: <ListChecks className="size-4" /> },
-  { to: 'transporte', label: 'Transporte', icon: <Truck className="size-4" /> },
 ];
 
 export function EventLayout() {

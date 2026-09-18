@@ -29,6 +29,7 @@ Las políticas son (`supabase/migrations/0002_rls.sql`):
 | `profiles` | Cualquier perfil activo | El propio perfil, o un administrador |
 | `events` y sus tablas hijas (tareas, horarios, planos, objetos, cables, cargas, capturas) | Cualquier perfil activo | Solo **miembros de ese evento** o administradores |
 | Catálogos globales (almacén, cajas, categorías, biblioteca, vehículos) | Cualquier perfil activo | Cualquier perfil activo |
+| Alta y baja de personas (`auth.users` + `profiles`) | — | Solo administradores, y solo a través de la Edge Function `access`, que valida el JWT en el servidor |
 
 La lectura del evento es global a propósito: el equipo necesita ver el calendario completo. La
 escritura sí está restringida a los responsables asignados.

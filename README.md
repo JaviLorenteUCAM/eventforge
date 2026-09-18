@@ -3,7 +3,7 @@
 **Plataforma web privada para gestionar eventos de principio a fin**: perfiles, eventos,
 calendario, planos 2D y 3D, objetos y mobiliario, material eléctrico y de red, conexiones,
 detección automática de incidencias, horarios, tareas, listado automático de material,
-almacén, cajas, transporte y simulación de carga.
+almacén y cajas.
 
 No es una maqueta ni una demo con datos falsos: es una aplicación real con **base de datos
 remota (PostgreSQL), almacenamiento remoto de imágenes, seguridad a nivel de base de datos y
@@ -110,14 +110,19 @@ profiles ──┬── event_members ──┬── events ──┬── ta
            │                   │            ├── schedule_days ── schedule_activities ── schedule_activity_members
            │                   │            ├── plans ──┬── plan_objects ──┐
            │                   │            │           └── plan_connections┘
-           │                   │            ├── transport_loads ── transport_items
            │                   │            └── snapshots
            │
-material_categories ──┬── object_catalog ──── (plan_objects.catalog_id)
-                      └── warehouse_items ─┬── warehouse_box_items ── warehouse_boxes
-                                           └── (plan_objects.warehouse_item_id)
-transport_vehicles ──── (transport_loads.vehicle_id)
+material_categories ──┬── warehouse_items ─┬── warehouse_box_items ── warehouse_boxes
+                      │                    └── (plan_objects.warehouse_item_id)   ← lo habitual
+                      └── object_catalog ──── (plan_objects.catalog_id)           ← piezas de un evento
 ```
+
+> **Almacén primero.** Lo que se coloca en un plano es, normalmente, una referencia REAL del
+> almacén: la misma ficha guarda las unidades de las que dispones y cómo se dibuja (forma,
+> color, textura, consumo, tomas y puertos). La *biblioteca* (`object_catalog`) queda para lo
+> puntual de un evento —una alfombra cortada a medida, un cartel— y empieza vacía.
+> Las tablas de transporte siguen existiendo en la base de datos, pero la sección se ha
+> retirado de la interfaz.
 
 El detalle completo (columnas, tipos, índices, claves foráneas y decisiones de diseño) está
 en [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) y, sobre todo, en los propios ficheros SQL
@@ -153,15 +158,16 @@ Si todavía no tienes el proyecto en GitHub, basta con abrir una terminal en la 
 ### 4.2 Aplicar las migraciones
 
 En el panel de Supabase, abre **SQL Editor** → **New query**. Copia y ejecuta el contenido
-de estos cuatro ficheros, **en este orden**, uno cada vez:
+de estos ficheros, **en este orden**, uno cada vez:
 
 | Orden | Fichero | Qué hace |
 |---|---|---|
 | 1 | `supabase/migrations/0001_schema.sql` | Crea todas las tablas, índices y relaciones |
 | 2 | `supabase/migrations/0002_rls.sql` | Activa Row Level Security, políticas, buckets y realtime |
-| 3 | `supabase/migrations/0003_catalog.sql` | Categorías, biblioteca de objetos y vehículos base |
+| 3 | `supabase/migrations/0003_catalog.sql` | Categorías de material y vehículos base |
 | 4 | `supabase/migrations/0004_functions.sql` | Duplicar evento y resumen de evento |
 | 5 | `supabase/migrations/0005_backgrounds_scenarios_textures.sql` | Imágenes de fondo calibradas, escenarios reutilizables y texturas |
+| 6 | `supabase/migrations/0006_warehouse_first.sql` | El almacén pasa a ser el origen de los objetos: forma, color, textura y electricidad en la propia ficha |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -309,7 +315,7 @@ npm run seed
 Crea los cuatro perfiles (**Juan · Producción**, **María · Técnica**, **Pedro ·
 Organización**, **Ana · Diseño**), un almacén de ejemplo y el **Evento Demo 2026** completo:
 plano con objetos y cableado (con dos fallos intencionados para probar el detector de
-incidencias), horarios de 3 días, 8 tareas, cajas y una carga de transporte.
+incidencias), horarios de 3 días, 8 tareas y cajas con su contenido.
 
 ```bash
 npm run seed -- --users    # solo los perfiles, sin datos de ejemplo
@@ -318,13 +324,26 @@ npm run seed -- --reset    # regenera el evento demo desde cero
 
 El script es **idempotente**: puedes ejecutarlo varias veces sin duplicar nada.
 
-**Añadir una persona más tarde**: edita el array `PEOPLE` en `scripts/seed.mjs` y vuelve a
-ejecutar `npm run seed -- --users`. También puedes crearla a mano en Supabase
-(**Authentication → Add user**, con *Auto Confirm User* activado) y después insertar su fila
-en `profiles` con el mismo `id`.
+**Añadir o eliminar personas más tarde**: desde la propia aplicación. En
+**Configuración → Perfiles del equipo**, un administrador tiene los botones *Añadir* y
+*Eliminar* (este último pide confirmación). No hace falta tocar Supabase ni volver a sembrar.
+
+Por debajo, esas dos acciones llaman a la Edge Function `access` con el JWT de quien las
+pide; la función comprueba en el servidor que ese perfil está activo y es administrador antes
+de crear o borrar el usuario de `auth.users`. La clave de servicio no sale nunca del
+servidor, y nadie puede eliminarse a sí mismo.
+
+> Si desplegaste la función `access` antes de esta versión, vuelve a desplegarla para que
+> aparezcan las acciones de administración (§7.3).
+
+Alternativas manuales, si alguna vez las necesitas: editar el array `PEOPLE` de
+`scripts/seed.mjs` y ejecutar `npm run seed -- --users`, o crear el usuario en Supabase
+(**Authentication → Add user**, con *Auto Confirm User* activado) e insertar su fila en
+`profiles` con el mismo `id`.
 
 Cada perfil puede editar su nombre, cargo, color y foto desde **Perfil**. Los administradores
-(`is_admin`) pueden activar o desactivar perfiles desde **Configuración**.
+(`is_admin`) pueden además activar, desactivar, añadir y eliminar perfiles desde
+**Configuración**.
 
 ---
 
@@ -543,8 +562,14 @@ eventforge/
 │   └── migrations/
 │       ├── 0001_schema.sql         # tablas, índices, relaciones
 │       ├── 0002_rls.sql            # seguridad, buckets, realtime
-│       ├── 0003_catalog.sql        # categorías, biblioteca, vehículos
-│       └── 0004_functions.sql      # duplicar evento, resumen
+│       ├── 0003_catalog.sql        # categorías de material, vehículos
+│       ├── 0004_functions.sql      # duplicar evento, resumen
+│       ├── 0005_backgrounds_scenarios_textures.sql
+│       └── 0006_warehouse_first.sql # el almacén pasa a ser el origen de los objetos
+├── scripts/
+│   ├── seed.mjs                    # datos de ejemplo
+│   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
+│   └── google-sheets/EventForge.gs # formato del almacén en Google Sheets
 ├── docs/
 │   ├── ARQUITECTURA.md
 │   ├── BACKUP.md
@@ -558,18 +583,17 @@ eventforge/
 │   ├── data/                       # capa de datos (React Query + Supabase)
 │   │   ├── api.ts  keys.ts  realtime.ts
 │   │   ├── events.ts  tasks.ts  schedule.ts
-│   │   ├── plans.ts  transport.ts  warehouse.ts  profiles.ts
+│   │   ├── plans.ts  warehouse.ts  profiles.ts
 │   ├── features/                   # un módulo por sección
 │   │   ├── dashboard/  calendar/  events/
 │   │   ├── plan/                   # editor 2D + 3D, inspector, incidencias
 │   │   ├── schedule/  tasks/  material/
-│   │   ├── transport/              # simulación de carga 2D + 3D
 │   │   ├── warehouse/              # inventario, cajas, biblioteca, categorías
 │   │   └── profile/                # perfil y configuración
 │   ├── lib/                        # lógica de negocio pura (sin React)
 │   │   ├── issues.ts               # detección de incidencias eléctricas/red
-│   │   ├── materials.ts            # plano → material → almacén
-│   │   ├── packing.ts              # volumen, peso y colocación de la carga
+│   │   ├── materials.ts            # plano → material → almacén (existencias)
+│   │   ├── textureAtlas.ts         # plantillas desplegadas y reparto de caras
 │   │   ├── storage.ts  supabase.ts  types.ts  utils.ts  env.ts
 │   ├── store/ui.ts                 # tema, menú, último evento
 │   ├── App.tsx  main.tsx  index.css
@@ -587,21 +611,19 @@ eventforge/
 Este es el objetivo principal del proyecto: no son seis herramientas sueltas.
 
 ```text
-   PLANO  ──(objetos y cables)──►  MATERIAL  ──(comparación)──►  ALMACÉN
-     │                                 │                            │
-     │                                 └──────────►  TRANSPORTE  ◄───┘
-     │                                                    ▲      (cajas como bulto)
-     └──(análisis de conexiones)──►  INCIDENCIAS          │
-                                          │               │
-   HORARIOS ──►  DASHBOARD  ◄── TAREAS ◄──┘               │
-                     ▲                                    │
-                     └────────────(ocupación)─────────────┘
+   ALMACÉN ──(lo que tienes)──►  PLANO  ──(objetos y cables)──►  MATERIAL
+      ▲                            │                               │
+      └──────(qué falta)───────────┴───────────────────────────────┘
+                                   │
+                                   └──(análisis de conexiones)──►  INCIDENCIAS
+                                                                      │
+   HORARIOS ──►  DASHBOARD  ◄── TAREAS ◄───────────────────────────────┘
 ```
 
-Si añades una mesa al plano, aparece en **Material**. Si esa mesa existe en el **Almacén**, se
-cuenta como disponible. Si no hay suficientes, aparece en rojo como faltante. Al preparar el
-**Transporte**, puedes añadir ese material, y si está dentro de una **caja**, cargas la caja
-entera con su peso real (tara + contenido).
+Colocas en el plano el material **del almacén**, y cada ficha te dice cuántas unidades te
+quedan libres (`1/4 uds`). Puedes colocar más de las que tienes: no se bloquea, se avisa, y
+esas unidades de más aparecen en **Material** bajo *«falta material»*, que es justo la lista
+de lo que hay que alquilar, comprar o pedir prestado.
 
 ### Dashboard
 Próximos eventos con porcentaje de preparación, eventos en curso, tareas pendientes,
@@ -610,8 +632,8 @@ Todo leído de PostgreSQL, con actualización en vivo de eventos y tareas.
 
 ### Eventos
 Crear, editar, eliminar, **duplicar**, buscar, filtrar y ordenar. Duplicar un evento copia
-—en una única transacción de PostgreSQL— el plano con sus objetos y cables, los horarios,
-las tareas y las cargas de transporte, desplazando todas las fechas al nuevo inicio.
+—en una única transacción de PostgreSQL— el plano con sus objetos, cables e imágenes de
+fondo, los horarios y las tareas, desplazando todas las fechas al nuevo inicio.
 
 ### Calendario
 Vistas de **mes, semana y día**. Doble clic en una casilla para crear un evento ese día y
@@ -622,13 +644,22 @@ Vista cenital en **metros reales**. Rejilla configurable, zoom con rueda centrad
 cursor, desplazamiento con espacio o botón central, ajuste a rejilla, medidas, líneas guía,
 selección múltiple con marco, copiar/pegar, duplicar y **deshacer/rehacer**.
 
-Figuras básicas: rectángulo, cuadrado, círculo, superficie, línea y texto, además de toda la
-biblioteca de objetos.
+Figuras básicas: rectángulo, cuadrado, círculo, superficie, línea y texto, además del
+material del almacén y de los objetos propios del evento.
+
+**Regla**: la herramienta de regla traza una línea sobre el plano y muestra cuánto mide
+(con Mayús se fuerza a horizontal o vertical). **Medidas**: al seleccionar un objeto aparecen
+sus cotas —largo × ancho × alto y, si está elevado, a qué altura— y el botón *Medidas* de la
+barra las muestra para todos a la vez.
+
+**En móvil** el plano ocupa toda la pantalla: un dedo lo desplaza, dos dedos hacen zoom, y la
+biblioteca, el inspector y el resto de opciones se abren como hoja inferior cuando hacen
+falta.
 
 Los objetos son entidades reales de la base de datos: se seleccionan, mueven, rotan (tirador
 dedicado, con ajuste a 15°), redimensionan (tirador de esquina), duplican, bloquean y
-eliminan. Cada uno guarda largo, ancho, alto, peso, color, forma, tipo, consumo y número de
-tomas o puertos.
+eliminan. Cada uno guarda largo, ancho, alto, altura sobre el suelo, color, forma, tipo,
+consumo y número de tomas o puertos.
 
 El **deshacer** está basado en comandos: cada acción sabe cómo revertirse escribiendo en la
 base de datos, de modo que al deshacer el resto del equipo también ve el resultado.
@@ -666,7 +697,16 @@ Guardar y cargar se hacen con funciones de PostgreSQL (`save_plan_as_scenario` y
 
 ### Texturas de los objetos
 
-Cada objeto de la biblioteca puede llevar una imagen. Hay dos modos:
+Cada ficha —del almacén o de la biblioteca— puede llevar una imagen. Se edita desde el
+almacén al crear o modificar el material, y también desde el plano (*Inspector → Textura y
+plantilla*). Como la textura vive en la ficha y no en la copia colocada, al editarla desde el
+plano se pregunta antes qué hacer:
+
+- **Cambiar la imagen original** — afecta a todas las copias de ese objeto, en todos los eventos.
+- **Crear una copia con la nueva textura** — se duplica la ficha, ese objeto del plano pasa a
+  usar la copia y el resto se queda igual.
+
+Hay dos modos de aplicarla:
 
 - **Despliegue por caras (plantilla)** — el modo recomendado para objetos concretos. El botón
   **Exportar plantilla** descarga un PNG con el objeto *desplegado en cruz*: las seis caras,
@@ -694,19 +734,26 @@ seleccionan con un clic y se arrastran sobre el suelo con ajuste a rejilla; rota
 escala se ajustan desde el inspector. Los cables se dibujan en el espacio y las incidencias
 se resaltan en rojo.
 
-### Biblioteca de objetos y material del almacén
-Al añadir un objeto puedes elegir el **origen**:
+### De dónde salen los objetos del plano
+Al añadir un objeto eliges el **origen**:
 
-- **Biblioteca** — 30+ objetos base (mobiliario, audiovisual, electricidad, red,
-  decoración, herramientas) más los que crees tú, con todas sus propiedades.
-- **Almacén** — una **unidad concreta** del inventario. El objeto del plano queda enlazado a
-  ese artículo, de modo que el listado sabe que ese PC es "PC Control 01" y no un PC
-  cualquiera.
+- **Almacén** (lo normal) — el material real del que dispones. La ficha lleva las unidades,
+  la ubicación, la caja, la forma, el color, la textura y su comportamiento eléctrico y de
+  red. En el panel del editor cada fila indica cuántas quedan libres: `1/4 uds`, contando
+  las que ya están puestas en ese plano. Si no queda ninguna, se puede colocar igualmente y
+  se avisa.
+- **Del evento** — figuras sueltas para marcar zonas (rectángulo, círculo, superficie, línea,
+  texto) y objetos creados a medida para ese montaje. Esta biblioteca empieza **vacía** a
+  propósito: lo que se tiene de forma habitual va al almacén.
+
+Al crear un objeto nuevo desde el editor se pregunta dónde guardarlo, porque es la diferencia
+entre llevar existencias o no.
 
 ### Cableado, redes y conexiones
 Herramientas de cable **eléctrico** y de **red**: clic en el origen, clic en el destino. La
-longitud se estima por la distancia en planta más un 20 % de holgura, y se puede corregir a
-mano. Cada cable guarda tipo, longitud, color, origen y destino, y **suma metros al listado
+longitud se estima por la distancia **real en el espacio** —planta y desnivel, tomando el
+centro de cada objeto según su altura sobre el suelo— más un 20 % de holgura, y se puede
+corregir a mano. Cada cable guarda tipo, longitud, color, origen y destino, y **suma metros al listado
 de material**.
 
 Las regletas tienen número de tomas; los switches, número de puertos.
@@ -734,33 +781,50 @@ de inicio y fin, responsables, color y notas, y puede **duplicarse a otro día**
 independiente.
 
 ### Listado de material
-Se genera solo a partir del plano: agrupa los objetos por entrada de biblioteca y los cables
-por tipo, y lo cruza con el almacén mostrando **necesario / disponible / faltan**. Exportable
-a CSV (separador `;`, compatible con Excel en español).
+Se genera solo a partir del plano: agrupa los objetos por ficha de almacén y los cables por
+tipo, y lo cruza con las existencias mostrando **necesario / en almacén / faltan**.
 
-El cruce con el almacén se hace por unidad asignada → por objeto de biblioteca → por nombre
+Arriba del todo aparece **«Falta material»**: la lista concreta de lo que hay que conseguir,
+con cuántas unidades necesitas, cuántas tienes y cuántas te faltan. Exportable a CSV
+(separador `;`, compatible con Excel en español).
+
+El cruce se hace por ficha de almacén asignada → por objeto de biblioteca → por nombre
 normalizado.
 
 ### Almacén, cajas y categorías
 Inventario global con búsqueda, filtros, ordenación, foto remota, ubicación y código interno.
-Las **cajas** guardan físicamente su contenido (`warehouse_box_items`), con volumen ocupado y
-peso total calculados. Las **categorías** tienen color propio, que se usa en todo el sistema.
+Cada material se puede **duplicar** con un clic (copia todo menos la foto y el código).
+
+Las **cajas** guardan físicamente su contenido (`warehouse_box_items`), con volumen ocupado
+calculado. También se duplican, pero **sin su contenido**: lo normal es querer otra caja
+igual, no otra copia del material que hay dentro.
+
+Las **categorías** tienen color propio, que se usa en todo el sistema.
+
+**Exportar a hoja de cálculo**: el botón deja la tabla en el portapapeles en formato TSV
+—se pega tal cual en la celda A1 de Google Sheets, Excel o LibreOffice— y además descarga un
+CSV de respaldo. Incluye unidades, ubicación, tipo de material, caja, dimensiones **en
+centímetros**, consumo y descripción. Para dejarla con buen aspecto (cabecera fija, anchos,
+filas alternas, filtro y el material agotado en rojo) hay un script de Google Apps Script
+listo para pegar en `scripts/google-sheets/EventForge.gs`; sus instrucciones están dentro
+del propio archivo.
+
+EventForge **no pide acceso a tu cuenta de Google**: eso exigiría permisos de escritura sobre
+todo tu Drive, y no hace falta para copiar una tabla.
 
 ### Tareas
 Tablero de tres columnas (Pendiente / En proceso / Hecha) con responsable, prioridad, fecha
 límite y aviso de retraso. Un clic en el icono cambia el estado.
 
-### Transporte y simulación de carga
-Eliges vehículo (cuatro plantillas o uno personalizado con tus medidas) y añades bultos desde
-el material del evento, desde las cajas del almacén, desde el inventario o a medida.
+### Personas del equipo
+En **Configuración → Perfiles del equipo**, un administrador puede **añadir** a alguien
+(nombre, puesto, color y si es administrador) y **eliminarlo**, siempre con confirmación.
+Desactivar es la vía suave: conserva el historial y solo bloquea la entrada.
 
-Vista **2D cenital** con arrastre y ajuste de 5 cm —los bultos se apilan solos cuando se
-colocan encima de otro— y vista **3D** con volumen real. El botón *Colocar automáticamente*
-aplica un algoritmo de estanterías por capas que ordena por superficie y rellena filas.
-
-Se calcula en tiempo real: volumen usado, volumen del vehículo, **porcentaje de ocupación**,
-peso total frente al máximo legal, bultos que sobresalen, bultos que se solapan y cuántos
-m³ faltan si no cabe todo.
+Crear o borrar a una persona toca `auth.users`, que solo se puede modificar con la clave de
+servicio. Por eso ambas operaciones pasan por la Edge Function `access`, que comprueba **en
+el servidor** que quien llama tiene sesión válida y es administrador; nadie puede llamarlas
+desde la consola del navegador. Tampoco puedes eliminarte a ti mismo.
 
 ---
 
@@ -772,7 +836,7 @@ m³ faltan si no cabe todo.
 | «El servidor no tiene configurado el código de acceso» | Falta el secreto `ACCESS_CODE` | Añádelo en Edge Functions → access → Secrets |
 | «Código de acceso incorrecto» y estás seguro de que es el bueno | El secreto tiene espacios o la función no se redesplegó | Vuelve a guardar el secreto y redespliega la función |
 | La pantalla de perfiles sale vacía | No has ejecutado la semilla | `npm run seed` |
-| `npm run seed` dice que no puede leer `object_catalog` | Faltan migraciones | Ejecuta los cuatro `.sql` en orden |
+| `npm run seed` dice que no puede leer `warehouse_items` | Faltan migraciones | Ejecuta los `.sql` de `supabase/migrations/` en orden |
 | «No tienes permisos para realizar esta acción» | No eres miembro de ese evento | Añádete en *Editar evento → Responsables* (lo hace un miembro actual) |
 | Recargar `/eventos/123/plano` da 404 | Faltan las reescrituras SPA | `vercel.json` / `_redirects` deben estar subidos a Git |
 | Los cambios de otro usuario no aparecen | Realtime no está publicando | Vuelve a ejecutar la sección final de `0002_rls.sql`; en cualquier caso, al recargar siempre se ven |
@@ -785,10 +849,9 @@ m³ faltan si no cabe todo.
 
 Está construido para crecer; estas son las evoluciones naturales:
 
-1. **Transporte**: el algoritmo actual es de estanterías por capas. Puede evolucionar a un
-   empaquetado 3D con huecos (*maximal rectangles*), restricciones de fragilidad, apilado
-   máximo y orden de descarga. La base de datos ya guarda posición y rotación por bulto, así
-   que no hace falta migrar nada.
+1. **Transporte y carga**: la sección se ha retirado de la interfaz, pero las tablas
+   (`transport_loads`, `transport_items`, `transport_vehicles`) siguen en la base de datos.
+   Si algún día vuelve a hacer falta, se puede recuperar sin migrar nada.
 2. **Edición colaborativa en vivo del plano**: hoy el realtime refresca los datos; el
    siguiente paso serían cursores compartidos y bloqueo optimista por objeto.
 3. **Autenticación por persona**: magic links por email o WebAuthn. La arquitectura ya usa

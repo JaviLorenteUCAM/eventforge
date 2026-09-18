@@ -210,6 +210,12 @@ export interface CatalogObject {
 
 export type TextureMode = 'atlas' | 'tile';
 
+/**
+ * Material del almacén. Desde la versión 0006 es TAMBIÉN la definición del
+ * objeto que se coloca en el plano: lleva forma, tipo, comportamiento
+ * eléctrico/red y textura. La biblioteca (object_catalog) queda para objetos
+ * puntuales de un evento, sin existencias.
+ */
 export interface WarehouseItem {
   id: string;
   name: string;
@@ -225,8 +231,29 @@ export interface WarehouseItem {
   description: string;
   location: string;
   internal_code: string | null;
+  kind: ObjectKind;
+  shape: 'box' | 'cylinder' | 'plane';
+  color: string;
+  requires_power: boolean;
+  requires_network: boolean;
+  power_w: number;
+  outlet_count: number;
+  port_count: number;
+  texture_path: string | null;
+  texture_mode: TextureMode;
+  texture_scale: number;
+  texture_offset_x: number;
+  texture_offset_y: number;
+  texture_rotation: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Existencias de un artículo frente a lo ya colocado en el plano. */
+export interface StockInfo {
+  total: number;
+  used: number;
+  available: number;
 }
 
 export interface WarehouseBox {

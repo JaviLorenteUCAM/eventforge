@@ -24,9 +24,6 @@ import { SettingsPage } from '@/features/profile/SettingsPage';
 const PlanPage = lazy(() =>
   import('@/features/plan/PlanPage').then((m) => ({ default: m.PlanPage })),
 );
-const TransportPage = lazy(() =>
-  import('@/features/transport/TransportPage').then((m) => ({ default: m.TransportPage })),
-);
 
 export default function App() {
   const { booting, session } = useAuth();
@@ -67,14 +64,6 @@ export default function App() {
           <Route path="horarios" element={<SchedulePage />} />
           <Route path="material" element={<MaterialPage />} />
           <Route path="tareas" element={<TasksPage />} />
-          <Route
-            path="transporte"
-            element={
-              <Suspense fallback={<LoadingState label="Cargando simulador de carga…" />}>
-                <TransportPage />
-              </Suspense>
-            }
-          />
         </Route>
         <Route path="almacen" element={<WarehousePage />} />
         <Route path="perfil" element={<ProfilePage />} />

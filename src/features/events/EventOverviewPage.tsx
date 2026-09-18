@@ -8,7 +8,6 @@ import {
   Layers3,
   ListChecks,
   Pencil,
-  Truck,
   Zap,
 } from 'lucide-react';
 import { Page } from '@/components/layout/PageHeader';
@@ -28,12 +27,10 @@ import { useTasks } from '@/data/tasks';
 import { useScheduleActivities, useScheduleDays } from '@/data/schedule';
 import { usePlanConnections, usePlanObjects, usePlans } from '@/data/plans';
 import { useCatalog, useWarehouseItems } from '@/data/warehouse';
-import { useLoads, useLoadItems, useVehicles } from '@/data/transport';
 import { useProfileMap } from '@/data/profiles';
 import { analyzePlan, powerBudget } from '@/lib/issues';
 import { computeMaterialNeeds, summarizeMaterial } from '@/lib/materials';
-import { computeLoadMetrics } from '@/lib/packing';
-import { fmtKg, fmtM3, fmtPct, hhmm } from '@/lib/utils';
+import { fmtNum, fmtPct, hhmm } from '@/lib/utils';
 import { EventFormModal } from './EventFormModal';
 
 export function EventOverviewPage() {
@@ -50,9 +47,6 @@ export function EventOverviewPage() {
   const connections = usePlanConnections(planId);
   const catalog = useCatalog();
   const items = useWarehouseItems();
-  const loads = useLoads(eventId);
-  const vehicles = useVehicles();
-  const loadItems = useLoadItems(loads.data?.[0]?.id);
 
   const [editOpen, setEditOpen] = useState(false);
 
@@ -90,8 +84,6 @@ export function EventOverviewPage() {
       .map((a) => ({ ...a, dayLabel: dayById.get(a.day_id)?.label ?? '' }))[0];
   }, [activities.data, days.data]);
 
-  const vehicle = vehicles.data?.find((v) => v.id === loads.data?.[0]?.vehicle_id) ?? null;
-  const loadMetrics = computeLoadMetrics(loadItems.data ?? [], vehicle);
   const power = powerBudget(objects.data ?? []);
 
   if (event.isLoading || !event.data) return <LoadingState />;
@@ -119,7 +111,7 @@ export function EventOverviewPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Stat
           label="Tareas"
           value={`${taskStats.done} / ${taskStats.total}`}
@@ -140,17 +132,6 @@ export function EventOverviewPage() {
           hint={issues.length ? 'Revisa el plano' : 'Sin problemas detectados'}
           tone={issues.length ? 'danger' : 'ok'}
           icon={<AlertTriangle className="size-4" />}
-        />
-        <Stat
-          label="Transporte"
-          value={vehicle ? fmtPct(loadMetrics.occupancyPct) : '—'}
-          hint={
-            vehicle
-              ? `${fmtM3(loadMetrics.usedVolumeM3)} / ${fmtM3(loadMetrics.vehicleVolumeM3)}`
-              : 'Sin vehículo asignado'
-          }
-          tone={loadMetrics.occupancyPct > 100 ? 'danger' : 'default'}
-          icon={<Truck className="size-4" />}
         />
       </div>
 
@@ -177,7 +158,11 @@ export function EventOverviewPage() {
                 value={`${power.totalW} W`}
                 hint={`≈ ${power.amps230} A a 230 V`}
               />
-              <MiniStat label="Peso total" value={fmtKg(material.totalWeightKg)} />
+              <MiniStat
+                label="Falta material"
+                value={material.totalMissing > 0 ? fmtNum(material.totalMissing, 0) : '—'}
+                hint={material.totalMissing > 0 ? 'unidades por conseguir' : 'todo disponible'}
+              />
             </div>
           </Card>
 

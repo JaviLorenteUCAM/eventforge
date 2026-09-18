@@ -28,10 +28,27 @@ export function accessFunctionUrl(): string {
   return `${env.supabaseUrl}/functions/v1/access`;
 }
 
-/** Llamada a la Edge Function `access` (no requiere sesion). */
-export async function callAccess<T>(payload: Record<string, unknown>): Promise<T> {
+/**
+ * Llamada a la Edge Function `access`.
+ *
+ * Por defecto va con la anon key (la pantalla de acceso todavia no tiene
+ * sesion). Las acciones de administracion (`admin_*`) necesitan el JWT de la
+ * persona que llama: la funcion comprueba en el servidor que ese perfil existe,
+ * esta activo y es administrador.
+ */
+export async function callAccess<T>(
+  payload: Record<string, unknown>,
+  options: { authenticated?: boolean } = {},
+): Promise<T> {
   if (!isConfigured) {
     throw new Error('La aplicación no tiene configuradas las variables de Supabase.');
+  }
+
+  let bearer = env.supabaseAnonKey;
+  if (options.authenticated) {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) throw new AccessError('forbidden');
+    bearer = data.session.access_token;
   }
 
   let res: Response;
@@ -41,7 +58,7 @@ export async function callAccess<T>(payload: Record<string, unknown>): Promise<T
       headers: {
         'Content-Type': 'application/json',
         apikey: env.supabaseAnonKey,
-        Authorization: `Bearer ${env.supabaseAnonKey}`,
+        Authorization: `Bearer ${bearer}`,
       },
       body: JSON.stringify(payload),
     });
@@ -86,6 +103,11 @@ const ACCESS_ERROR_MESSAGES: Record<string, string> = {
   user_without_email: 'El perfil no tiene un usuario de autenticación asociado.',
   link_error: 'No se ha podido iniciar la sesión. Inténtalo de nuevo.',
   db_error: 'Error al leer los perfiles.',
+  forbidden: 'Necesitas una sesión de administrador para hacer esto.',
+  bad_name: 'El nombre no es válido.',
+  create_failed: 'No se ha podido crear la persona.',
+  delete_failed: 'No se ha podido eliminar la persona.',
+  cannot_delete_self: 'No puedes eliminar tu propio perfil.',
 };
 
 /** Mensaje legible para errores de PostgREST/Supabase. */

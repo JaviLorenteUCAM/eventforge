@@ -28,9 +28,6 @@ export const qk = {
   scenarios: ['scenarios'] as const,
   scenarioPreview: (id: string) => ['scenarios', id, 'preview'] as const,
 
-  vehicles: ['transport-vehicles'] as const,
-  loads: (eventId: string) => ['transport-loads', eventId] as const,
-  loadItems: (loadId: string) => ['transport-items', loadId] as const,
 
   snapshots: (eventId: string) => ['snapshots', eventId] as const,
 };

@@ -20,7 +20,12 @@ import {
   Trash2,
   Layers,
   Save,
+  Scaling,
+  MoreHorizontal,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth/AuthProvider';
 import { Badge, Button, ConfirmDialog, IconButton, LoadingState, Modal, Segmented } from '@/components/ui';
@@ -38,7 +43,7 @@ import { useRealtime } from '@/data/realtime';
 import { qk } from '@/data/keys';
 import { analyzePlan, powerBudget } from '@/lib/issues';
 import { BUCKETS, resolveUrl, uploadBlob } from '@/lib/storage';
-import type { Plan, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
+import type { CatalogObject, Plan, PlanConnection, PlanIssue, PlanObject, WarehouseItem } from '@/lib/types';
 import { cn, fmtNum, round, uid } from '@/lib/utils';
 import { Editor2D, type CalibrationLine, type CommitUpdate } from './Editor2D';
 import { Editor3D } from './Editor3D';
@@ -47,6 +52,7 @@ import { ObjectLibrary, type AddPayload, type BasicShape } from './ObjectLibrary
 import { BackgroundPanel } from './BackgroundPanel';
 import { CalibrationModal, type CalibrationResult } from './CalibrationModal';
 import { LoadScenarioModal, SaveScenarioModal } from './ScenarioModals';
+import { ObjectTextureFlow } from './ObjectTextureFlow';
 import type { TextureSpec } from './TexturedMesh';
 import { usePlanStore } from './planStore';
 import { usePlanOps } from './usePlanOps';
@@ -121,6 +127,15 @@ export function PlanPage() {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [selectedBackgroundId, setSelectedBackgroundId] = useState<string | null>(null);
   const [calibration, setCalibration] = useState<CalibrationLine | null>(null);
+  const [textureFlowOpen, setTextureFlowOpen] = useState(false);
+  /**
+   * PANELES EN MÓVIL
+   *
+   * En pantalla pequeña no caben tres columnas: el plano se quedaba en una
+   * franja inutilizable. Aquí el plano ocupa TODO el alto y la biblioteca, el
+   * inspector y el resto de opciones se abren como hoja inferior, una cada vez.
+   */
+  const [sheet, setSheet] = useState<'none' | 'library' | 'inspector' | 'tools'>('none');
   const [saveScenarioOpen, setSaveScenarioOpen] = useState(false);
   const [loadScenarioOpen, setLoadScenarioOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -152,7 +167,11 @@ export function PlanPage() {
 
   useEffect(() => {
     const paths = [
-      ...new Set((catalog.data ?? []).map((c) => c.texture_path).filter(Boolean as never)),
+      ...new Set(
+        [...(catalog.data ?? []), ...(items.data ?? [])]
+          .map((c) => c.texture_path)
+          .filter(Boolean as never),
+      ),
     ] as string[];
     if (paths.length === 0) {
       setTextureUrls(new Map());
@@ -170,7 +189,7 @@ export function PlanPage() {
     return () => {
       alive = false;
     };
-  }, [catalog.data]);
+  }, [catalog.data, items.data]);
 
   useRealtime(
     `plan-${plan?.id}`,
@@ -230,12 +249,15 @@ export function PlanPage() {
   const selectedConnection = connectionList.find((c) => c.id === selectedConnectionId) ?? null;
   const selectedBackground = backgroundList.find((b) => b.id === selectedBackgroundId) ?? null;
 
-  /** Textura efectiva de cada objeto, heredada de su entrada de biblioteca. */
+  /** Textura efectiva de cada objeto, heredada de su ficha de origen. */
   const textures = useMemo(() => {
     const byCatalog = new Map((catalog.data ?? []).map((c) => [c.id, c]));
+    const byItem = new Map((items.data ?? []).map((i) => [i.id, i]));
     const map = new Map<string, TextureSpec>();
     for (const o of objectList) {
-      const c = o.catalog_id ? byCatalog.get(o.catalog_id) : undefined;
+      const c =
+        (o.warehouse_item_id ? byItem.get(o.warehouse_item_id) : undefined) ??
+        (o.catalog_id ? byCatalog.get(o.catalog_id) : undefined);
       if (!c?.texture_path) continue;
       const url = textureUrls.get(c.texture_path);
       if (!url) continue;
@@ -246,7 +268,7 @@ export function PlanPage() {
         offsetX: Number(c.texture_offset_x) || 0,
         offsetY: Number(c.texture_offset_y) || 0,
         rotation: Number(c.texture_rotation) || 0,
-        // Medidas del objeto de BIBLIOTECA: son las que definen el reparto de
+        // Medidas de la FICHA DE ORIGEN: son las que definen el reparto de
         // caras dentro de la plantilla, aunque la copia del plano se haya
         // redimensionado.
         atlas: {
@@ -257,7 +279,7 @@ export function PlanPage() {
       });
     }
     return map;
-  }, [objectList, catalog.data, textureUrls]);
+  }, [objectList, catalog.data, items.data, textureUrls]);
 
   // --- Imágenes de fondo ----------------------------------------------------
   const handleBackgroundUploaded = useCallback(
@@ -361,28 +383,38 @@ export function PlanPage() {
         rotation: 0,
       };
 
+      // Un objeto del plano se define igual venga del almacén o de la
+      // biblioteca: lo único que cambia es a qué ficha queda enlazado.
+      const fromSource = (
+        src: WarehouseItem | CatalogObject,
+        link: { warehouse_item_id: string | null; catalog_id: string | null },
+      ) => ({
+        ...base,
+        ...link,
+        label: src.name,
+        kind: src.kind,
+        category_id: src.category_id,
+        length_m: Number(src.length_m),
+        width_m: Number(src.width_m),
+        height_m: Number(src.height_m),
+        color: src.color,
+        shape: src.shape,
+        requires_power: src.requires_power,
+        requires_network: src.requires_network,
+        power_w: Number(src.power_w),
+        outlet_count: src.outlet_count,
+        port_count: src.port_count,
+      });
+
       const row =
         payload.source === 'shape'
           ? { ...base, ...BASIC_SHAPES[payload.shape], kind: 'generic' as const, color: '#94a3b8' }
-          : {
-              ...base,
-              catalog_id: payload.catalog.id || null,
-              warehouse_item_id: payload.warehouseItem?.id ?? null,
-              label: payload.warehouseItem?.name ?? payload.catalog.name,
-              kind: payload.catalog.kind,
-              category_id: payload.catalog.category_id,
-              length_m: Number(payload.catalog.length_m),
-              width_m: Number(payload.catalog.width_m),
-              height_m: Number(payload.catalog.height_m),
-              weight_kg: Number(payload.catalog.weight_kg),
-              color: payload.catalog.color,
-              shape: payload.catalog.shape,
-              requires_power: payload.catalog.requires_power,
-              requires_network: payload.catalog.requires_network,
-              power_w: Number(payload.catalog.power_w),
-              outlet_count: payload.catalog.outlet_count,
-              port_count: payload.catalog.port_count,
-            };
+          : payload.source === 'warehouse'
+            ? fromSource(payload.item, { warehouse_item_id: payload.item.id, catalog_id: null })
+            : fromSource(payload.catalog, {
+                warehouse_item_id: null,
+                catalog_id: payload.catalog.id || null,
+              });
 
       try {
         const { ids, history: entry } = await ops.addObjects([row]);
@@ -447,8 +479,16 @@ export function PlanPage() {
         return;
       }
 
-      // Longitud estimada: distancia en planta + un 20 % de holgura, redondeado.
-      const distance = Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y));
+      // Longitud estimada: distancia REAL en el espacio (planta + desnivel) más un
+      // 20 % de holgura. La altura cuenta desde el punto de conexión de cada objeto,
+      // que tomamos en su centro vertical (z + altura/2).
+      const za = Number(a.z ?? 0) + Number(a.height_m ?? 0) / 2;
+      const zb = Number(b.z ?? 0) + Number(b.height_m ?? 0) / 2;
+      const distance = Math.hypot(
+        Number(a.x) - Number(b.x),
+        Number(a.y) - Number(b.y),
+        za - zb,
+      );
       const length = Math.max(1, Math.ceil(distance * 1.2));
 
       try {
@@ -625,9 +665,15 @@ export function PlanPage() {
   if (plans.isLoading || !plan) return <LoadingState label="Cargando plano…" />;
 
   const budget = powerBudget(objectList);
-  const warehouseName = selectedObjects[0]?.warehouse_item_id
-    ? items.data?.find((i) => i.id === selectedObjects[0].warehouse_item_id)?.name
-    : undefined;
+  const singleObject = selectedObjects.length === 1 ? selectedObjects[0] : null;
+  const sourceItem = singleObject?.warehouse_item_id
+    ? (items.data?.find((i) => i.id === singleObject.warehouse_item_id) ?? null)
+    : null;
+  const sourceCatalog =
+    !sourceItem && singleObject?.catalog_id
+      ? (catalog.data?.find((c) => c.id === singleObject.catalog_id) ?? null)
+      : null;
+  const warehouseName = sourceItem?.name;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -650,15 +696,42 @@ export function PlanPage() {
           onChange={setTool}
           size="sm"
           options={[
-            { value: 'select', label: 'Seleccionar', icon: <MousePointer2 className="size-3.5" /> },
-            { value: 'power', label: 'Eléctrico', icon: <Zap className="size-3.5" /> },
-            { value: 'network', label: 'Red', icon: <Network className="size-3.5" /> },
-            { value: 'calibrate', label: 'Calibrar', icon: <Ruler className="size-3.5" /> },
+            {
+              value: 'select',
+              title: 'Seleccionar',
+              label: <span className="hidden sm:inline">Seleccionar</span>,
+              icon: <MousePointer2 className="size-3.5" />,
+            },
+            {
+              value: 'power',
+              title: 'Cable eléctrico',
+              label: <span className="hidden sm:inline">Eléctrico</span>,
+              icon: <Zap className="size-3.5" />,
+            },
+            {
+              value: 'network',
+              title: 'Cable de red',
+              label: <span className="hidden sm:inline">Red</span>,
+              icon: <Network className="size-3.5" />,
+            },
+            {
+              value: 'measure',
+              title: 'Regla: mide una distancia',
+              label: <span className="hidden sm:inline">Regla</span>,
+              icon: <Ruler className="size-3.5" />,
+            },
+            {
+              value: 'calibrate',
+              title: 'Calibrar la imagen de fondo',
+              label: <span className="hidden sm:inline">Calibrar</span>,
+              icon: <Scaling className="size-3.5" />,
+            },
           ]}
         />
 
-        <div className="mx-1 h-6 w-px bg-[var(--ef-line)]" />
+        <div className="mx-1 hidden h-6 w-px bg-[var(--ef-line)] lg:block" />
 
+        <div className="hidden items-center gap-2 lg:flex">
         <Toggle active={store.showGrid} onClick={() => store.toggle('showGrid')} label="Rejilla">
           <Grid3x3 className="size-4" />
         </Toggle>
@@ -677,6 +750,7 @@ export function PlanPage() {
         <Toggle active={store.showNetwork} onClick={() => store.toggle('showNetwork')} label="Ver red">
           <Cable className="size-4" />
         </Toggle>
+        </div>
 
         <div className="mx-1 h-6 w-px bg-[var(--ef-line)]" />
 
@@ -703,37 +777,47 @@ export function PlanPage() {
             <span className="num">{budget.totalW} W</span>
           </span>
 
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Layers className="size-3.5" />}
-            onClick={() => setLoadScenarioOpen(true)}
-          >
-            Escenarios
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Save className="size-3.5" />}
-            onClick={() => setSaveScenarioOpen(true)}
-            disabled={objectList.length === 0 && backgroundList.length === 0}
-          >
-            Guardar escenario
-          </Button>
+          <div className="hidden items-center gap-2 lg:flex">
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Layers className="size-3.5" />}
+              onClick={() => setLoadScenarioOpen(true)}
+            >
+              Escenarios
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Save className="size-3.5" />}
+              onClick={() => setSaveScenarioOpen(true)}
+              disabled={objectList.length === 0 && backgroundList.length === 0}
+            >
+              Guardar escenario
+            </Button>
 
-          <Button
-            size="sm"
-            variant="outline"
-            icon={<Camera className="size-3.5" />}
-            loading={capturing}
-            onClick={() => void takeCapture()}
-          >
-            Captura {mode.toUpperCase()}
-          </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              icon={<Camera className="size-3.5" />}
+              loading={capturing}
+              onClick={() => void takeCapture()}
+            >
+              Captura {mode.toUpperCase()}
+            </Button>
+            <IconButton
+              label="Ver capturas"
+              onClick={() => setCapturesOpen(true)}
+              icon={<ImageIcon className="size-4" />}
+            />
+          </div>
+
+          {/* Móvil: el resto de opciones, en una hoja desplegable. */}
           <IconButton
-            label="Ver capturas"
-            onClick={() => setCapturesOpen(true)}
-            icon={<ImageIcon className="size-4" />}
+            label="Más opciones"
+            className="lg:hidden"
+            onClick={() => setSheet('tools')}
+            icon={<MoreHorizontal className="size-4" />}
           />
           <IconButton
             label={leftOpen ? 'Ocultar biblioteca' : 'Mostrar biblioteca'}
@@ -763,7 +847,7 @@ export function PlanPage() {
       <div className="flex min-h-0 flex-1">
         {leftOpen ? (
           <div className="hidden w-[248px] shrink-0 border-r border-line bg-[color-mix(in_oklab,var(--ef-canvas)_60%,transparent)] lg:block">
-            <ObjectLibrary onAdd={(p) => void handleAdd(p)} />
+            <ObjectLibrary onAdd={(p) => void handleAdd(p)} planObjects={objectList} />
           </div>
         ) : null}
 
@@ -839,6 +923,9 @@ export function PlanPage() {
                   connection={selectedConnection}
                   issues={selectedObjects[0] ? (issuesByObject.get(selectedObjects[0].id) ?? []) : []}
                   warehouseName={warehouseName}
+                  onEditTexture={
+                    sourceItem || sourceCatalog ? () => setTextureFlowOpen(true) : undefined
+                  }
                   onCommit={(u, l) => void commit(u, l)}
                   onCommitConnection={(p) => void handleUpdateConnection(p)}
                   onDelete={() => setConfirmDelete(true)}
@@ -878,24 +965,234 @@ export function PlanPage() {
         ) : null}
       </div>
 
-      {/* Panel móvil: biblioteca + inspector apilados */}
-      <div className="border-t border-line lg:hidden">
-        <div className="max-h-[42vh] overflow-y-auto">
-          <Inspector
-            plan={plan}
-            selected={selectedObjects}
-            connection={selectedConnection}
-            issues={selectedObjects[0] ? (issuesByObject.get(selectedObjects[0].id) ?? []) : []}
-            warehouseName={warehouseName}
-            onCommit={(u, l) => void commit(u, l)}
-            onCommitConnection={(p) => void handleUpdateConnection(p)}
-            onDelete={() => setConfirmDelete(true)}
-            onDuplicate={() => void duplicateObjects(selectedObjects)}
-            onDeleteConnection={() => void handleDeleteConnection()}
-            onPlanChange={(patch: Partial<Plan>) => updatePlan.mutate({ id: plan.id, patch })}
+      {/* Móvil: barra inferior. El plano se queda con toda la pantalla. */}
+      <div className="flex shrink-0 items-center gap-2 border-t border-line bg-[color-mix(in_oklab,var(--ef-canvas)_85%,transparent)] px-3 py-2 backdrop-blur-xl lg:hidden">
+        <Button
+          size="sm"
+          variant="outline"
+          className="flex-1 justify-center"
+          icon={<Boxes className="size-3.5" />}
+          onClick={() => setSheet('library')}
+        >
+          Objetos
+        </Button>
+        <Button
+          size="sm"
+          variant={selectedObjects.length || selectedConnection ? 'primary' : 'outline'}
+          className="flex-1 justify-center"
+          icon={<SlidersHorizontal className="size-3.5" />}
+          onClick={() => {
+            setRightTab('inspector');
+            setSheet('inspector');
+          }}
+        >
+          {selectedObjects.length > 1
+            ? `${selectedObjects.length} objetos`
+            : selectedObjects.length === 1
+              ? 'Objeto'
+              : selectedConnection
+                ? 'Cable'
+                : 'Plano'}
+        </Button>
+        <IconButton
+          label="Imágenes de fondo"
+          onClick={() => {
+            setRightTab('background');
+            setSheet('inspector');
+          }}
+          icon={<ImageIcon className="size-4" />}
+        />
+      </div>
+
+      {/* Hojas inferiores (solo móvil) */}
+      <MobileSheet open={sheet === 'library'} title="Añadir un objeto" onClose={() => setSheet('none')}>
+        <div className="h-[70vh]">
+          <ObjectLibrary
+            planObjects={objectList}
+            onAdd={(p) => {
+              void handleAdd(p);
+              // Se cierra para ver dónde ha caído el objeto.
+              setSheet('none');
+            }}
           />
         </div>
-      </div>
+      </MobileSheet>
+
+      <MobileSheet
+        open={sheet === 'inspector'}
+        title={rightTab === 'background' ? 'Imágenes de fondo' : 'Propiedades'}
+        onClose={() => setSheet('none')}
+      >
+        <div className="border-b border-line p-2">
+          <Segmented
+            className="w-full"
+            size="sm"
+            value={rightTab}
+            onChange={setRightTab}
+            options={[
+              { value: 'inspector', label: 'Inspector' },
+              {
+                value: 'background',
+                label: `Fondo${backgroundList.length ? ` (${backgroundList.length})` : ''}`,
+              },
+            ]}
+          />
+        </div>
+        <div className="max-h-[62vh] overflow-y-auto">
+          {rightTab === 'inspector' ? (
+            <Inspector
+              plan={plan}
+              selected={selectedObjects}
+              connection={selectedConnection}
+              issues={selectedObjects[0] ? (issuesByObject.get(selectedObjects[0].id) ?? []) : []}
+              warehouseName={warehouseName}
+              onEditTexture={
+                sourceItem || sourceCatalog
+                  ? () => {
+                      setSheet('none');
+                      setTextureFlowOpen(true);
+                    }
+                  : undefined
+              }
+              onCommit={(u, l) => void commit(u, l)}
+              onCommitConnection={(p) => void handleUpdateConnection(p)}
+              onDelete={() => {
+                setSheet('none');
+                setConfirmDelete(true);
+              }}
+              onDuplicate={() => void duplicateObjects(selectedObjects)}
+              onDeleteConnection={() => void handleDeleteConnection()}
+              onPlanChange={(patch: Partial<Plan>) => updatePlan.mutate({ id: plan.id, patch })}
+            />
+          ) : (
+            <BackgroundPanel
+              plan={plan}
+              backgrounds={backgroundList}
+              urls={backgroundUrls}
+              selectedId={selectedBackgroundId}
+              onSelect={setSelectedBackgroundId}
+              onChange={handleBackgroundChange}
+              onDelete={(b) =>
+                deleteBackground.mutate(
+                  { id: b.id, planId: plan.id, storagePath: b.storage_path },
+                  {
+                    onSuccess: () => {
+                      setSelectedBackgroundId(null);
+                      toast.success('Capa eliminada');
+                    },
+                  },
+                )
+              }
+              onUploaded={handleBackgroundUploaded}
+            />
+          )}
+        </div>
+      </MobileSheet>
+
+      <MobileSheet open={sheet === 'tools'} title="Vista y herramientas" onClose={() => setSheet('none')}>
+        <div className="space-y-4 p-4">
+          <div>
+            <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-dim">
+              Qué se ve en el plano
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Toggle active={store.showGrid} onClick={() => store.toggle('showGrid')} label="Rejilla">
+                <Grid3x3 className="size-4" />
+              </Toggle>
+              <Toggle active={snap} onClick={() => store.toggle('snap')} label="Ajuste a rejilla">
+                <Magnet className="size-4" />
+              </Toggle>
+              <Toggle active={store.showLabels} onClick={() => store.toggle('showLabels')} label="Etiquetas">
+                <Eye className="size-4" />
+              </Toggle>
+              <Toggle active={store.showMeasures} onClick={() => store.toggle('showMeasures')} label="Medidas">
+                <Ruler className="size-4" />
+              </Toggle>
+              <Toggle active={store.showPower} onClick={() => store.toggle('showPower')} label="Cableado eléctrico">
+                <Zap className="size-4" />
+              </Toggle>
+              <Toggle active={store.showNetwork} onClick={() => store.toggle('showNetwork')} label="Red">
+                <Cable className="size-4" />
+              </Toggle>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Button
+              variant="outline"
+              icon={<Camera className="size-4" />}
+              loading={capturing}
+              onClick={() => {
+                setSheet('none');
+                void takeCapture();
+              }}
+            >
+              Guardar captura {mode.toUpperCase()}
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<ImageIcon className="size-4" />}
+              onClick={() => {
+                setSheet('none');
+                setCapturesOpen(true);
+              }}
+            >
+              Ver capturas
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<Layers className="size-4" />}
+              onClick={() => {
+                setSheet('none');
+                setLoadScenarioOpen(true);
+              }}
+            >
+              Cargar un escenario
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<Save className="size-4" />}
+              disabled={objectList.length === 0 && backgroundList.length === 0}
+              onClick={() => {
+                setSheet('none');
+                setSaveScenarioOpen(true);
+              }}
+            >
+              Guardar como escenario
+            </Button>
+          </div>
+
+          <p className="text-[12px] leading-relaxed text-dim">
+            En el plano: un dedo para desplazarlo, dos para acercar y alejar. Toca un objeto para
+            seleccionarlo y abre «Propiedades» para ajustarlo.
+          </p>
+        </div>
+      </MobileSheet>
+
+      {singleObject && (sourceItem || sourceCatalog) ? (
+        <ObjectTextureFlow
+          open={textureFlowOpen}
+          object={singleObject}
+          item={sourceItem}
+          catalogObject={sourceCatalog}
+          onClose={() => setTextureFlowOpen(false)}
+          onRelink={(link) =>
+            void commit(
+              [
+                {
+                  id: singleObject.id,
+                  patch: link,
+                  previous: {
+                    warehouse_item_id: singleObject.warehouse_item_id,
+                    catalog_id: singleObject.catalog_id,
+                  },
+                },
+              ],
+              'Cambiar el origen del objeto',
+            )
+          }
+        />
+      ) : null}
 
       <ConfirmDialog
         open={confirmDelete}
@@ -945,6 +1242,69 @@ export function PlanPage() {
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Hoja inferior para móvil.
+ *
+ * Se usa en lugar de las columnas laterales, que en pantalla pequeña dejaban
+ * el plano reducido a una franja. Sube desde abajo, tapa como mucho el 85 % de
+ * la pantalla y se cierra tocando fuera, con la X o con Escape.
+ */
+function MobileSheet({
+  open,
+  title,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end lg:hidden">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+            className="relative max-h-[85vh] overflow-hidden rounded-t-2xl border-t border-line bg-[var(--ef-surface-solid)] shadow-2xl"
+          >
+            <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+              <span className="text-[13.5px] font-semibold text-ink">{title}</span>
+              <button
+                onClick={onClose}
+                aria-label="Cerrar"
+                className="ml-auto rounded-lg p-1.5 text-dim transition-colors hover:bg-surface-2 hover:text-ink"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="min-h-0 overflow-y-auto">{children}</div>
+          </motion.div>
+        </div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 

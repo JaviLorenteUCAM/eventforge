@@ -1,4 +1,4 @@
-import { forwardRef, useId } from 'react';
+import { forwardRef, useId, useState } from 'react';
 import type {
   InputHTMLAttributes,
   ReactNode,
@@ -153,7 +153,15 @@ export function ColorPicker({
   );
 }
 
-/** Input numerico con unidad a la derecha. */
+/**
+ * Input numérico con unidad a la derecha.
+ *
+ * Mientras el campo está enfocado se edita una CADENA (el "borrador"), no el
+ * número. Así se puede escribir "1,5" sin que el 0 inicial se quede pegado
+ * delante ni que un valor a medio escribir ("0,", "-") se normalice de golpe.
+ * Al salir, el borrador se descarta y vuelve a mandar el número real.
+ * Además, al enfocar se selecciona todo: escribir reemplaza en vez de añadir.
+ */
 export function NumberInput({
   value,
   onChange,
@@ -173,18 +181,27 @@ export function NumberInput({
   className?: string;
   disabled?: boolean;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (Number.isFinite(value) ? String(value) : '0');
+
   return (
     <div className={cn('relative', className)}>
       <input
         type="number"
-        value={Number.isFinite(value) ? value : 0}
+        value={shown}
         step={step}
         min={min}
         max={max}
         disabled={disabled}
+        inputMode="decimal"
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={() => setDraft(null)}
         onChange={(e) => {
-          const n = Number.parseFloat(e.target.value);
-          onChange(Number.isFinite(n) ? n : 0);
+          const raw = e.target.value;
+          setDraft(raw);
+          if (raw === '' || raw === '-') return; // valor a medio escribir
+          const n = Number.parseFloat(raw);
+          if (Number.isFinite(n)) onChange(n);
         }}
         // Sin flechas nativas: en campos estrechos robaban el espacio del valor
         // y recortaban números como 0,75.

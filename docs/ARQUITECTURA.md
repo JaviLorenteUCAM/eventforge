@@ -95,19 +95,34 @@ scale(zoom)">`. Los trazos usan `vector-effect="non-scaling-stroke"` y los texto
 `fontSize = px / zoom`, de modo que el grosor y la letra son constantes en pantalla a
 cualquier nivel de zoom.
 
-### Transporte (`transport_items`)
+### Gestos en el lienzo 2D
 
-```text
-        x  ──────────────►  ancho del vehículo   (0 .. vehicle.width_m)
-   y │  ┌────────────────┐
-     │  │  ▣ (x,y)       │  (x, y) es la ESQUINA del bulto
-     ▼  │                │  z = altura de apilado
-        └────────────────┘
-        y = largo del vehículo (0 .. vehicle.length_m), cabina arriba
-```
+| Entrada | Acción |
+|---|---|
+| Rueda del ratón | Zoom centrado en el cursor |
+| Espacio o botón central + arrastrar | Desplazar el plano |
+| Un dedo sobre el fondo | Desplazar el plano (en ratón, marco de selección) |
+| Dos dedos | Pellizcar para hacer zoom, manteniendo bajo los dedos el mismo punto del plano |
 
-Los dos sistemas difieren a propósito: en el plano interesa rotar alrededor del centro; en la
-carga interesa alinear esquinas contra las paredes de la caja.
+El pellizco se resuelve llevando la cuenta de los punteros activos (`pointers`, un `Map` por
+`pointerId`): cuando aparece el segundo dedo se cancela el arrastre en curso y se guarda el
+estado inicial del gesto (distancia, centro, zoom y desplazamiento). Es la única forma de que
+un pellizco que empieza encima de un objeto no lo arrastre.
+
+### Almacén primero
+
+Desde la migración `0006`, la ficha del almacén (`warehouse_items`) lleva también `kind`,
+`shape`, `color`, `requires_power`, `requires_network`, `power_w`, `outlet_count`,
+`port_count` y las columnas de textura. Es decir: **el artículo del almacén es el objeto**.
+
+`object_catalog` se mantiene para las piezas propias de un evento y empieza vacío (la
+migración borra el catálogo de sistema). `plan_objects` puede apuntar a cualquiera de los
+dos, y `computeStock()` (`src/lib/materials.ts`) cuenta cuántas unidades de cada artículo
+están ya colocadas en el plano para mostrar `disponibles/total`.
+
+Las existencias **no bloquean**: se puede colocar material que no se tiene. Esa es
+precisamente la información que interesa —lo que hay que alquilar— y aparece en el listado de
+material bajo *«falta material»*.
 
 ---
 
@@ -251,13 +266,17 @@ Dos detalles que costaron depuración y conviene no volver a romper:
 2. **Las texturas se cargan a mano con `THREE.TextureLoader`**, no con `useTexture`/`useLoader`
    de drei. Las URLs son firmadas y caducan; la caché de `useLoader` guardaría la URL vieja y,
    con Suspense, un fallo de red tumbaría la escena entera en lugar de degradar a color plano.
-3. **El reparto de caras se calcula con las medidas del objeto de BIBLIOTECA, no con las de la
-   copia colocada en el plano** (`TextureSpec.atlas`). La rejilla del atlas es proporcional al
+3. **El reparto de caras se calcula con las medidas de la FICHA DE ORIGEN (almacén o
+   biblioteca), no con las de la copia colocada en el plano** (`TextureSpec.atlas`). La rejilla del atlas es proporcional al
    objeto para el que se exportó la plantilla; si se usaran las medidas de la instancia, al
    redimensionar un objeto en el plano los recuadros dejarían de coincidir con sus caras y los
    colores saldrían desplazados. Con la referencia fija, redimensionar una copia simplemente
-   estira la textura, que es lo esperado. La contrapartida: si se cambian las medidas del objeto
-   de biblioteca hay que volver a exportar la plantilla, y la interfaz lo avisa.
+   estira la textura, que es lo esperado. La contrapartida: si se cambian las medidas de la
+   ficha de origen hay que volver a exportar la plantilla, y la interfaz lo avisa.
+
+   Como la textura vive en la ficha, editarla desde el plano afecta a todas las copias. Por eso
+   `ObjectTextureFlow` pregunta antes si se quiere cambiar el original o duplicar la ficha y
+   reenlazar solo ese objeto del plano.
 4. **Medio téxel de margen y sin mipmaps** en cada cara. Sin el margen, el filtrado bilineal
    muestrea el recuadro contiguo justo en el borde y aparece un ribete del color de la cara
    vecina; con mipmaps, al ver el objeto pequeño se mezclan recuadros entre sí.
@@ -294,9 +313,9 @@ apartado 17 del README.
 
 | Medida | Dónde |
 |---|---|
-| `three.js` en un *chunk* aparte, cargado solo al abrir Plano o Transporte | `vite.config.ts` + `React.lazy` en `App.tsx` |
-| Arrastre sin escrituras: la posición vive en estado local y solo se confirma al soltar | `Editor2D.tsx`, `LoadView2D.tsx` |
-| Actualizaciones optimistas en mover objeto y mover bulto | `data/plans.ts`, `data/transport.ts` |
+| `three.js` en un *chunk* aparte, cargado solo al abrir el Plano | `vite.config.ts` + `React.lazy` en `App.tsx` |
+| Arrastre sin escrituras: la posición vive en estado local y solo se confirma al soltar | `Editor2D.tsx` |
+| Actualizaciones optimistas al mover un objeto | `data/plans.ts` |
 | Realtime invalida consultas en lugar de fusionar *payloads* | `data/realtime.ts` |
 | Selectores atómicos de Zustand (nunca objetos nuevos por render) | `store/ui.ts`, `planStore.ts` |
 | `useMemo` en todos los cálculos derivados (material, incidencias, agrupaciones) | páginas de `features/` |
@@ -313,9 +332,11 @@ React. Three.js (309 kB gzip) **no** se descarga hasta que abres un editor.
 - Prioridad: escritorio → tablet → móvil.
 - Dashboard, eventos, calendario, tareas, horarios, material y almacén son totalmente
   usables en móvil.
-- Los editores 2D/3D funcionan en tablet; en móvil el inspector se apila debajo del lienzo y
-  la biblioteca lateral se oculta (la edición fina está pensada para pantalla grande, tal
-  como se acordó).
+- Los editores 2D/3D funcionan en tablet y en móvil. En móvil el lienzo ocupa toda la
+  pantalla: la barra de herramientas se reduce a iconos, y la biblioteca, el inspector y el
+  resto de opciones se abren como **hoja inferior** (`MobileSheet`), una cada vez, en lugar de
+  robarle sitio al plano de forma permanente. El zoom y el desplazamiento se hacen con los
+  dedos (ver «Gestos en el lienzo 2D»).
 - Todos los botones de solo icono llevan `aria-label` y `title`.
 - Foco visible en todos los controles (`:focus-visible`).
 - Los diálogos cierran con `Escape` y bloquean el desplazamiento del fondo.

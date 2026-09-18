@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Boxes, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Box, Boxes, Copy, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Button,
@@ -35,6 +35,7 @@ export function BoxesTab() {
   const boxItems = useBoxItems();
   const items = useWarehouseItems();
   const deleteBox = useDeleteBox();
+  const createBox = useCreateBox();
 
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WarehouseBox | null>(null);
@@ -76,6 +77,27 @@ export function BoxesTab() {
     return { content, volume, weight, capacity, fillPct: capacity ? (volume / capacity) * 100 : 0 };
   }
 
+  /**
+   * Duplica la caja (medidas, color, ubicación) pero NO su contenido: lo
+   * normal es querer «otra caja igual», no otra copia del material.
+   */
+  async function handleDuplicate(box: WarehouseBox) {
+    const { id, created_at, updated_at, code, name, ...rest } = box;
+    void id;
+    void created_at;
+    void updated_at;
+    const taken = new Set((boxes.data ?? []).map((b) => b.code));
+    let newCode = `${code}-COPIA`;
+    let n = 2;
+    while (taken.has(newCode)) newCode = `${code}-COPIA${n++}`;
+    try {
+      await createBox.mutateAsync({ ...rest, code: newCode, name });
+      toast.success('Caja duplicada (vacía). Ajusta su código y su contenido.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se ha podido duplicar');
+    }
+  }
+
   async function handleDelete() {
     if (!toDelete) return;
     try {
@@ -113,7 +135,7 @@ export function BoxesTab() {
       ) : filtered.length === 0 ? (
         <EmptyState
           title={boxes.data?.length ? 'Ninguna caja coincide' : 'Todavía no hay cajas'}
-          message="Las cajas agrupan material y se pueden cargar enteras en el transporte."
+          message="Las cajas agrupan material para saber dónde está guardado cada cosa."
           icon={<Boxes className="size-5" />}
           action={
             <Button
@@ -158,6 +180,14 @@ export function BoxesTab() {
                       className="rounded-md p-1 text-dim hover:bg-surface-2 hover:text-ink"
                     >
                       <Pencil className="size-3.5" />
+                    </button>
+                    <button
+                      onClick={() => void handleDuplicate(box)}
+                      aria-label="Duplicar caja"
+                      title="Duplicar la caja sin su contenido"
+                      className="rounded-md p-1 text-dim hover:bg-surface-2 hover:text-ink"
+                    >
+                      <Copy className="size-3.5" />
                     </button>
                     <button
                       onClick={() => setToDelete(box)}

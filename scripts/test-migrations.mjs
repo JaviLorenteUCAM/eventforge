@@ -80,6 +80,7 @@ const FILES = [
   '0003_catalog.sql',
   '0004_functions.sql',
   '0005_backgrounds_scenarios_textures.sql',
+  '0006_warehouse_first.sql',
 ];
 let allOk = true;
 
@@ -317,25 +318,44 @@ console.log(
     : '  \x1b[31m✗\x1b[0m La carga del escenario no es correcta',
 );
 
-// Texturas en la biblioteca
+// Texturas del material del almacén (modelo «almacén primero»: la ficha del
+// almacén es la que define forma, color y textura de lo que se coloca).
+const itemId = crypto.randomUUID();
 await db.exec(`
-  update public.object_catalog
-     set texture_path = 'demo/mesa.png', texture_mode = 'atlas', texture_scale = 1.5
-   where id = 'c0000000-0000-4000-8000-000000000001'
+  insert into public.warehouse_items
+    (id, name, quantity, unit, length_m, width_m, height_m, kind, shape, color,
+     texture_path, texture_mode, texture_scale)
+  values
+    ('${itemId}', 'Mesa de pruebas', 4, 'ud', 2, 0.8, 0.75, 'furniture', 'box', '#a3a3a3',
+     'demo/mesa.png', 'atlas', 1.5)
 `);
 const tex = await db.query(
-  `select texture_path, texture_mode, texture_scale from public.object_catalog
-    where id='c0000000-0000-4000-8000-000000000001'`,
+  `select texture_path, texture_mode, texture_scale, quantity
+     from public.warehouse_items where id='${itemId}'`,
 );
 console.log(
-  tex.rows[0].texture_path === 'demo/mesa.png'
-    ? '  \x1b[32m✓\x1b[0m La biblioteca acepta texturas con su transformación'
-    : '  \x1b[31m✗\x1b[0m Las columnas de textura no funcionan',
+  tex.rows[0].texture_path === 'demo/mesa.png' && Number(tex.rows[0].quantity) === 4
+    ? '  \x1b[32m✓\x1b[0m El almacén guarda textura, forma y unidades'
+    : '  \x1b[31m✗\x1b[0m Las columnas del almacén no funcionan',
+);
+
+// Un objeto del plano enlazado a esa ficha: es lo que permite contar el stock.
+await db.exec(`
+  insert into public.plan_objects (plan_id, warehouse_item_id, label, length_m, width_m, height_m)
+  values ('${planId}', '${itemId}', 'Mesa 1', 2, 0.8, 0.75)
+`);
+const link = await db.query(
+  `select count(*)::int as n from public.plan_objects where warehouse_item_id='${itemId}'`,
+);
+console.log(
+  link.rows[0].n === 1
+    ? '  \x1b[32m✓\x1b[0m Los objetos del plano se enlazan con el almacén'
+    : '  \x1b[31m✗\x1b[0m El enlace con el almacén no funciona',
 );
 
 await mustFail(
   'Un modo de textura inválido se rechaza',
-  `update public.object_catalog set texture_mode='inventado' where id='c0000000-0000-4000-8000-000000000001'`,
+  `update public.warehouse_items set texture_mode='inventado' where id='${itemId}'`,
 );
 await mustFail(
   'Una opacidad fuera de 0..1 se rechaza',

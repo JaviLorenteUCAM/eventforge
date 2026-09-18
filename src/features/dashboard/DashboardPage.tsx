@@ -181,7 +181,7 @@ export function DashboardPage() {
           {running.length === 0 && upcoming.length === 0 ? (
             <EmptyState
               title="No hay eventos programados"
-              message="Crea tu primer evento para empezar a planificar planos, material y transporte."
+              message="Crea tu primer evento para empezar a planificar planos, material y tareas."
               icon={<CalendarClock className="size-5" />}
               action={
                 <Link to="/eventos?nuevo=1">

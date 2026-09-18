@@ -10,7 +10,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  Truck,
   UserCircle2,
   CalendarRange,
 } from 'lucide-react';
@@ -57,7 +56,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         { to: `/eventos/${eventId}/horarios`, label: 'Horarios', icon: <CalendarDays className="size-[18px]" /> },
         { to: `/eventos/${eventId}/material`, label: 'Material', icon: <Boxes className="size-[18px]" /> },
         { to: `/eventos/${eventId}/tareas`, label: 'Tareas', icon: <ListChecks className="size-[18px]" /> },
-        { to: `/eventos/${eventId}/transporte`, label: 'Transporte', icon: <Truck className="size-[18px]" /> },
       ]
     : [];
 

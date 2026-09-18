@@ -17,7 +17,7 @@ import { usePlanConnections, usePlanObjects, usePlans } from '@/data/plans';
 import { useCategories, useCatalog, useWarehouseItems } from '@/data/warehouse';
 import { useEvent } from '@/data/events';
 import { computeMaterialNeeds, materialToCsv, summarizeMaterial } from '@/lib/materials';
-import { downloadBlob, fmtKg, fmtM3, fmtNum, normalize, slugify } from '@/lib/utils';
+import { downloadBlob, fmtM3, fmtNum, normalize, slugify } from '@/lib/utils';
 
 export function MaterialPage() {
   const { eventId } = useParams();
@@ -107,7 +107,13 @@ export function MaterialPage() {
           tone={summary.coverage >= 100 ? 'ok' : 'warn'}
           icon={<Boxes className="size-4" />}
         />
-        <Stat label="Peso estimado" value={fmtKg(summary.totalWeightKg)} />
+        <Stat
+          label="Hay que conseguir"
+          value={summary.shortLines}
+          hint={summary.shortLines ? 'referencias sin stock suficiente' : 'nada pendiente'}
+          tone={summary.shortLines ? 'danger' : 'ok'}
+          icon={<AlertTriangle className="size-4" />}
+        />
         <Stat label="Volumen estimado" value={fmtM3(summary.totalVolumeM3)} />
       </div>
 
@@ -123,6 +129,38 @@ export function MaterialPage() {
           ]}
         />
       </div>
+
+      {/* Lo que hay que conseguir: alquilar, comprar o pedir prestado */}
+      {summary.shortLines > 0 ? (
+        <Card className="mt-5 overflow-hidden border-[color-mix(in_oklab,var(--ef-warn)_40%,transparent)]">
+          <div className="flex items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-warn)_10%,transparent)] px-4 py-2.5">
+            <AlertTriangle className="size-4 text-warn" />
+            <h2 className="text-[13.5px] font-semibold text-ink">
+              Falta material · {summary.shortLines}{' '}
+              {summary.shortLines === 1 ? 'referencia' : 'referencias'}
+            </h2>
+            <span className="ml-auto text-[12px] text-muted">
+              lo que hay que alquilar, comprar o pedir prestado
+            </span>
+          </div>
+          <div className="divide-y divide-[var(--ef-line)]">
+            {needs
+              .filter((n) => n.missing > 0)
+              .map((n) => (
+                <div key={n.key} className="flex items-center gap-3 px-4 py-2.5 text-[13px]">
+                  <span className="min-w-0 flex-1 truncate text-ink">{n.name}</span>
+                  <span className="num shrink-0 text-muted">
+                    necesitas {fmtNum(n.needed, n.unit === 'm' ? 1 : 0)} · tienes{' '}
+                    {fmtNum(n.available, n.unit === 'm' ? 1 : 0)}
+                  </span>
+                  <span className="num w-28 shrink-0 text-right font-semibold text-danger">
+                    conseguir {fmtNum(n.missing, n.unit === 'm' ? 1 : 0)} {n.unit}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </Card>
+      ) : null}
 
       {needs.length === 0 ? (
         <EmptyState

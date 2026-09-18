@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { PlanObject } from '@/lib/types';
 
-export type PlanTool = 'select' | 'power' | 'network' | 'calibrate';
+export type PlanTool = 'select' | 'power' | 'network' | 'calibrate' | 'measure';
 export type PlanMode = '2d' | '3d';
 
 interface PlanEditorState {

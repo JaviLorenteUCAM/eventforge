@@ -69,7 +69,7 @@ Supabase → **Table Editor** → elige la tabla → menú **⋯** → **Export 
 Tablas que conviene exportar si haces esto a mano:
 `profiles`, `events`, `event_members`, `tasks`, `schedule_days`, `schedule_activities`,
 `plans`, `plan_objects`, `plan_connections`, `warehouse_items`, `warehouse_boxes`,
-`warehouse_box_items`, `transport_loads`, `transport_items`, `object_catalog`,
+`warehouse_box_items`, `object_catalog`, `transport_loads`, `transport_items`,
 `material_categories`.
 
 ---

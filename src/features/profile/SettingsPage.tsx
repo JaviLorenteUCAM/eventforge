@@ -1,9 +1,39 @@
-import { Database, HardDrive, KeyRound, Moon, ShieldCheck, Sun, Users } from 'lucide-react';
+import { useState } from 'react';
+import {
+  Database,
+  HardDrive,
+  KeyRound,
+  Moon,
+  Plus,
+  ShieldCheck,
+  Sun,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth/AuthProvider';
 import { Page, PageHeader } from '@/components/layout/PageHeader';
-import { Avatar, Badge, Button, Card, CardHeader, Checkbox, Segmented } from '@/components/ui';
-import { useProfiles, useSetProfileActive } from '@/data/profiles';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Checkbox,
+  ColorPicker,
+  ConfirmDialog,
+  Field,
+  Input,
+  Modal,
+  Segmented,
+} from '@/components/ui';
+import {
+  useCreateProfile,
+  useDeleteProfile,
+  useProfiles,
+  useSetProfileActive,
+} from '@/data/profiles';
+import type { Profile } from '@/lib/types';
 import { env } from '@/lib/env';
 import { useUi } from '@/store/ui';
 
@@ -11,6 +41,10 @@ export function SettingsPage() {
   const { profile, lock, session } = useAuth();
   const profiles = useProfiles();
   const setActive = useSetProfileActive();
+  const createProfile = useCreateProfile();
+  const deleteProfile = useDeleteProfile();
+  const [newOpen, setNewOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<Profile | null>(null);
   const theme = useUi((s) => s.theme);
   const setTheme = useUi((s) => s.setTheme);
 
@@ -92,8 +126,17 @@ export function SettingsPage() {
         <Card>
           <CardHeader
             title="Perfiles del equipo"
-            subtitle={profile?.is_admin ? 'Puedes activar o desactivar perfiles' : 'Solo lectura'}
+            subtitle={
+              profile?.is_admin ? 'Puedes añadir, desactivar o eliminar personas' : 'Solo lectura'
+            }
             icon={<Users className="size-4" />}
+            actions={
+              profile?.is_admin ? (
+                <Button size="sm" variant="outline" icon={<Plus className="size-3.5" />} onClick={() => setNewOpen(true)}>
+                  Añadir
+                </Button>
+              ) : undefined
+            }
           />
           <div className="space-y-2.5 px-5 pb-5">
             {(profiles.data ?? []).map((p) => (
@@ -107,6 +150,16 @@ export function SettingsPage() {
                   <Badge color="#6366f1">
                     <ShieldCheck className="size-3" /> Admin
                   </Badge>
+                ) : null}
+                {profile?.is_admin && p.id !== profile.id ? (
+                  <button
+                    onClick={() => setToDelete(p)}
+                    aria-label={`Eliminar a ${p.name}`}
+                    title="Eliminar esta persona"
+                    className="rounded-md p-1 text-dim transition-colors hover:bg-surface-2 hover:text-danger"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 ) : null}
                 <Checkbox
                   label="Activo"
@@ -126,13 +179,120 @@ export function SettingsPage() {
               </div>
             ))}
             <p className="pt-1 text-[12px] leading-relaxed text-dim">
-              El alta de nuevos perfiles se hace con <code className="rounded bg-surface-2 px-1">npm run seed</code>{' '}
-              o desde el panel de Supabase (Authentication → Users). Está explicado en el README.
+              Desactivar conserva el historial y solo bloquea la entrada. Eliminar borra a la
+              persona y no se puede deshacer; lo que hubiera creado se mantiene, pero deja de tener
+              autor.
             </p>
           </div>
         </Card>
       </div>
+
+      <NewProfileModal
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        loading={createProfile.isPending}
+        onCreate={(values) =>
+          createProfile.mutate(values, {
+            onSuccess: (p) => {
+              toast.success(`${p.name} ya puede entrar con el código del espacio`);
+              setNewOpen(false);
+            },
+            onError: (err) =>
+              toast.error(err instanceof Error ? err.message : 'No se ha podido crear'),
+          })
+        }
+      />
+
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        onCancel={() => setToDelete(null)}
+        onConfirm={() => {
+          if (!toDelete) return;
+          deleteProfile.mutate(toDelete.id, {
+            onSuccess: () => {
+              toast.success('Persona eliminada');
+              setToDelete(null);
+            },
+            onError: (err) =>
+              toast.error(err instanceof Error ? err.message : 'No se ha podido eliminar'),
+          });
+        }}
+        loading={deleteProfile.isPending}
+        title="Eliminar a esta persona"
+        message={
+          <>
+            Se eliminará «{toDelete?.name}» y su acceso a EventForge. No se puede deshacer. Si solo
+            quieres que deje de entrar, desmarca «Activo» en vez de eliminarla.
+          </>
+        }
+      />
     </Page>
+  );
+}
+
+function NewProfileModal({
+  open,
+  loading,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  loading: boolean;
+  onClose: () => void;
+  onCreate: (values: { name: string; roleTitle: string; color: string; isAdmin: boolean }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [roleTitle, setRoleTitle] = useState('');
+  const [color, setColor] = useState('#6366f1');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  function submit() {
+    if (!name.trim()) return;
+    onCreate({ name: name.trim(), roleTitle: roleTitle.trim(), color, isAdmin });
+    setName('');
+    setRoleTitle('');
+    setIsAdmin(false);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      title="Añadir a una persona"
+      description="Entrará eligiendo su nombre en la pantalla de acceso, con el mismo código del espacio."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" loading={loading} onClick={submit}>
+            Crear
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Nombre" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Marta Ruiz" autoFocus />
+        </Field>
+        <Field label="Puesto">
+          <Input
+            value={roleTitle}
+            onChange={(e) => setRoleTitle(e.target.value)}
+            placeholder="Responsable de montaje"
+          />
+        </Field>
+        <Field label="Color">
+          <ColorPicker value={color} onChange={setColor} />
+        </Field>
+        <Checkbox
+          label="Administrador (puede añadir y eliminar personas)"
+          checked={isAdmin}
+          onChange={(e) => setIsAdmin(e.target.checked)}
+        />
+      </div>
+    </Modal>
   );
 }
 

@@ -6,6 +6,12 @@
 //   POST { action: "list",  code }              -> lista de perfiles
 //   POST { action: "login", code, profileId }   -> token de sesion (magic link)
 //
+// Administracion de personas (requieren un JWT de un perfil con is_admin, NO
+// el codigo compartido: la sesion autenticada es una credencial mas fuerte):
+//
+//   POST { action: "admin_create_user", name, roleTitle, color, isAdmin }
+//   POST { action: "admin_delete_user", profileId }
+//
 // Por que existe esta funcion
 // ---------------------------
 // La pantalla "¿quien eres?" no pide contraseña. Si el frontend consultase
@@ -80,6 +86,47 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+/** Identificador legible para el email interno de cada persona. */
+function slugify(value: string): string {
+  return (
+    value
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'persona'
+  );
+}
+
+function randomPassword(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(36).padStart(2, '0')).join('');
+}
+
+/**
+ * Comprueba que quien llama es un perfil ACTIVO y ADMINISTRADOR.
+ * Se valida el JWT contra Supabase Auth; no basta con que lo diga el cliente.
+ */
+async function requireAdmin(req: Request): Promise<{ id: string } | null> {
+  const auth = req.headers.get('authorization') ?? '';
+  const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+  if (!token) return null;
+
+  const { data, error } = await admin.auth.getUser(token);
+  if (error || !data?.user) return null;
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('id, is_admin, is_active')
+    .eq('id', data.user.id)
+    .maybeSingle();
+
+  if (!profile?.is_admin || !profile.is_active) return null;
+  return { id: profile.id };
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   const headers = corsHeaders(origin);
@@ -105,11 +152,92 @@ Deno.serve(async (req) => {
     );
   }
 
-  let body: { action?: string; code?: string; profileId?: string };
+  let body: {
+    action?: string;
+    code?: string;
+    profileId?: string;
+    name?: string;
+    roleTitle?: string;
+    color?: string;
+    isAdmin?: boolean;
+  };
   try {
     body = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: 'bad_request' }), { status: 400, headers });
+  }
+
+  // ------------------------------------------------------- administracion ---
+  // Estas acciones NO usan el codigo compartido: exigen una sesion de admin.
+  if (body.action === 'admin_create_user' || body.action === 'admin_delete_user') {
+    const caller = await requireAdmin(req);
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers });
+    }
+
+    if (body.action === 'admin_create_user') {
+      const name = (body.name ?? '').trim();
+      if (name.length < 1 || name.length > 80) {
+        return new Response(JSON.stringify({ error: 'bad_name' }), { status: 400, headers });
+      }
+
+      const email = `${slugify(name)}-${crypto.randomUUID().slice(0, 6)}@eventforge.invalid`;
+      const created = await admin.auth.admin.createUser({
+        email,
+        password: randomPassword(),
+        email_confirm: true,
+        user_metadata: { name },
+      });
+      if (created.error || !created.data.user) {
+        return new Response(
+          JSON.stringify({ error: 'create_failed', detail: created.error?.message }),
+          { status: 500, headers },
+        );
+      }
+
+      const { data: profile, error: pErr } = await admin
+        .from('profiles')
+        .insert({
+          id: created.data.user.id,
+          name,
+          role_title: (body.roleTitle ?? '').trim().slice(0, 80),
+          color: body.color ?? '#6366f1',
+          is_active: true,
+          is_admin: Boolean(body.isAdmin),
+          sort_order: 999,
+        })
+        .select()
+        .single();
+
+      if (pErr) {
+        // Si el perfil no se puede crear, no dejamos el usuario huerfano.
+        await admin.auth.admin.deleteUser(created.data.user.id);
+        return new Response(JSON.stringify({ error: 'db_error', detail: pErr.message }), {
+          status: 500,
+          headers,
+        });
+      }
+
+      return new Response(JSON.stringify({ profile }), { status: 200, headers });
+    }
+
+    // admin_delete_user
+    if (!body.profileId) {
+      return new Response(JSON.stringify({ error: 'missing_profile' }), { status: 400, headers });
+    }
+    if (body.profileId === caller.id) {
+      return new Response(JSON.stringify({ error: 'cannot_delete_self' }), { status: 400, headers });
+    }
+
+    // Borrar el usuario de auth arrastra el perfil (on delete cascade).
+    const { error: dErr } = await admin.auth.admin.deleteUser(body.profileId);
+    if (dErr) {
+      return new Response(JSON.stringify({ error: 'delete_failed', detail: dErr.message }), {
+        status: 500,
+        headers,
+      });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
   }
 
   if (!body.code || !safeEqual(body.code.trim(), ACCESS_CODE)) {

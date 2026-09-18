@@ -6,6 +6,11 @@ export interface SegmentOption<T extends string> {
   value: T;
   label: ReactNode;
   icon?: ReactNode;
+  /**
+   * Nombre en texto plano. Se usa como título y como nombre accesible cuando
+   * la etiqueta se oculta (por ejemplo en móvil, donde solo cabe el icono).
+   */
+  title?: string;
 }
 
 export function Segmented<T extends string>({
@@ -39,6 +44,8 @@ export function Segmented<T extends string>({
             key={opt.value}
             role="tab"
             aria-selected={active}
+            title={opt.title}
+            aria-label={opt.title}
             onClick={() => onChange(opt.value)}
             className={cn(
               'relative inline-flex items-center gap-1.5 rounded-lg font-medium transition-colors',

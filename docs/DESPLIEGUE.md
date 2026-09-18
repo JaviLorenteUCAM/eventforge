@@ -238,11 +238,18 @@ almacenamiento remoto y datos compartidos entre dispositivos.
 **Tareas**
 - [ ] Crear, asignar, cambiar estado y prioridad
 
-**Transporte**
-- [ ] Vehículo con dimensiones
-- [ ] Volumen, peso y ocupación
-- [ ] Cajas como bulto
-- [ ] Mover, apilar, vista 2D y 3D
+**Almacén**
+- [ ] Alta, edición, duplicado y baja de material
+- [ ] Unidades disponibles en el editor de planos (`1/4 uds`)
+- [ ] Cajas con contenido y duplicado de cajas
+- [ ] Exportar a hoja de cálculo
+
+**Personas**
+- [ ] Añadir y eliminar perfiles desde Configuración (como administrador)
+
+**Móvil**
+- [ ] El plano se desplaza con un dedo y hace zoom con dos
+- [ ] Las hojas de objetos, propiedades y opciones se abren y cierran
 
 **Infraestructura**
 - [ ] Base de datos remota

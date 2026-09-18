@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Package, Trash2, Unlink } from 'lucide-react';
+import { Copy, Image, Package, Trash2, Unlink } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui';
 import type { Plan, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
 import { OBJECT_KINDS, OBJECT_KIND_LABEL, type ObjectKind } from '@/lib/types';
-import { cn, fmtKg, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
+import { cn, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
 import type { CommitUpdate } from './Editor2D';
 
 interface Props {
@@ -21,6 +21,8 @@ interface Props {
   connection: PlanConnection | null;
   issues: PlanIssue[];
   warehouseName?: string;
+  /** Abre el editor de textura de la ficha de origen del objeto. */
+  onEditTexture?: () => void;
   onCommit: (updates: CommitUpdate[], label: string) => void;
   onCommitConnection: (patch: Partial<PlanConnection>) => void;
   onDelete: () => void;
@@ -35,6 +37,7 @@ export function Inspector({
   connection,
   issues,
   warehouseName,
+  onEditTexture,
   onCommit,
   onCommitConnection,
   onDelete,
@@ -67,6 +70,7 @@ export function Inspector({
       object={selected[0]}
       issues={issues}
       warehouseName={warehouseName}
+      onEditTexture={onEditTexture}
       onCommit={onCommit}
       onDelete={onDelete}
       onDuplicate={onDuplicate}
@@ -95,6 +99,7 @@ function ObjectInspector({
   object,
   issues,
   warehouseName,
+  onEditTexture,
   onCommit,
   onDelete,
   onDuplicate,
@@ -102,6 +107,7 @@ function ObjectInspector({
   object: PlanObject;
   issues: PlanIssue[];
   warehouseName?: string;
+  onEditTexture?: () => void;
   onCommit: (updates: CommitUpdate[], label: string) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -187,16 +193,7 @@ function ObjectInspector({
               />
             </Field>
           </div>
-          <p className="num text-[11.5px] text-dim">
-            Volumen {fmtM3(volume)} · Peso {fmtKg(Number(object.weight_kg))}
-          </p>
-          <Field label="Peso">
-            <NumberInput
-              value={Number(object.weight_kg)}
-              onChange={(v) => set({ weight_kg: Math.max(0, v) }, 'Cambiar peso')}
-              unit="kg"
-            />
-          </Field>
+          <p className="num text-[11.5px] text-dim">Volumen {fmtM3(volume)}</p>
         </Section>
 
         <Section title="Posición">
@@ -276,6 +273,22 @@ function ObjectInspector({
           <Field label="Color">
             <ColorPicker value={object.color} onChange={(c) => set({ color: c }, 'Cambiar color')} />
           </Field>
+          {onEditTexture ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full justify-center"
+              icon={<Image className="size-3.5" />}
+              onClick={onEditTexture}
+            >
+              Textura y plantilla…
+            </Button>
+          ) : (
+            <p className="text-[11.5px] leading-relaxed text-dim">
+              Las figuras sueltas no llevan textura. Crea el objeto en el almacén o en la
+              biblioteca para poder ponerle una imagen.
+            </p>
+          )}
         </Section>
 
         <Section title="Electricidad y red">
@@ -369,7 +382,6 @@ function MultiInspector({
   onDelete: () => void;
   onDuplicate: () => void;
 }) {
-  const weight = objects.reduce((s, o) => s + Number(o.weight_kg), 0);
   const volume = objects.reduce(
     (s, o) => s + volumeOf(Number(o.length_m), Number(o.width_m), Number(o.height_m)),
     0,
@@ -379,9 +391,7 @@ function MultiInspector({
     <div className="flex h-full flex-col">
       <Section title="Selección múltiple">
         <p className="text-[13px] text-ink">{count} objetos seleccionados</p>
-        <p className="num text-[12px] text-muted">
-          Peso total {fmtKg(weight)} · Volumen {fmtM3(volume)}
-        </p>
+        <p className="num text-[12px] text-muted">Volumen {fmtM3(volume)}</p>
         <p className="text-[12px] text-dim">
           Arrastra para moverlos juntos. Usa Supr para eliminarlos o Ctrl+D para duplicarlos.
         </p>

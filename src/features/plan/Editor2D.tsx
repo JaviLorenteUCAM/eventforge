@@ -70,7 +70,16 @@ type DragState =
       ratio: number;
     }
   | { kind: 'calibrate'; x0: number; y0: number; x1: number; y1: number }
+  | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
   | null;
+
+/** Trazo de la regla que se queda en pantalla tras soltar. */
+interface Measurement {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
 
 export function Editor2D({
   plan,
@@ -115,6 +124,62 @@ export function Editor2D({
   const [drag, setDrag] = useState<DragState>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const [size, setSize] = useState({ w: 800, h: 600 });
+  const [measurement, setMeasurement] = useState<Measurement | null>(null);
+
+  /**
+   * GESTOS TÁCTILES
+   *
+   * En móvil no hay rueda, ni barra espaciadora, ni botón central, así que el
+   * plano se quedaba sin zoom ni desplazamiento. Se resuelve con dos gestos:
+   *
+   *   · un dedo sobre el fondo  -> desplazar el plano (en ratón sigue siendo
+   *     selección por marco, que en pantalla táctil apenas se usa);
+   *   · dos dedos              -> pellizcar para hacer zoom y arrastrar a la vez.
+   *
+   * Se lleva la cuenta de los punteros activos porque el pellizco puede empezar
+   * encima de un objeto: al aparecer el segundo dedo se cancela el arrastre.
+   */
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{
+    dist: number;
+    cx: number;
+    cy: number;
+    zoom: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
+
+  const pinchState = useCallback(() => {
+    const pts = [...pointers.current.values()];
+    if (pts.length < 2) return null;
+    const [a, b] = pts;
+    return {
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      cx: (a.x + b.x) / 2,
+      cy: (a.y + b.y) / 2,
+    };
+  }, []);
+
+  /** Registra el dedo y, si ya hay dos, arranca el pellizco. */
+  const trackDown = useCallback(
+    (e: React.PointerEvent): boolean => {
+      if (e.pointerType !== 'touch') return false;
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.current.size < 2) return false;
+      const st = pinchState();
+      if (st) {
+        pinch.current = { ...st, zoom, panX, panY };
+        setDrag(null);
+      }
+      return true;
+    },
+    [pinchState, zoom, panX, panY],
+  );
+
+  // La regla se borra al cambiar de herramienta.
+  useEffect(() => {
+    if (tool !== 'measure') setMeasurement(null);
+  }, [tool]);
 
   const grid = Number(plan.grid_size_m) || 0.5;
   const objectById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
@@ -176,6 +241,7 @@ export function Editor2D({
   // --- Interacción sobre un objeto -----------------------------------------
   function handleObjectPointerDown(e: React.PointerEvent, obj: PlanObject) {
     e.stopPropagation();
+    if (trackDown(e)) return;
     if (spaceDown || e.button === 1) return;
 
     if (tool !== 'select') {
@@ -205,6 +271,7 @@ export function Editor2D({
   }
 
   function handleCanvasPointerDown(e: React.PointerEvent) {
+    if (trackDown(e)) return;
     if (spaceDown || e.button === 1) {
       setDrag({ kind: 'pan', startX: e.clientX, startY: e.clientY, panX, panY });
       return;
@@ -218,6 +285,14 @@ export function Editor2D({
       return;
     }
 
+    // Regla: mide una distancia cualquiera sobre el plano.
+    if (tool === 'measure') {
+      const p = toWorld(e.clientX, e.clientY);
+      setMeasurement(null);
+      setDrag({ kind: 'measure', x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+      return;
+    }
+
     if (tool !== 'select') {
       setLinkFrom(null);
       return;
@@ -228,11 +303,38 @@ export function Editor2D({
       onSelectBackground(null);
       return;
     }
+    if (e.pointerType === 'touch') {
+      setDrag({ kind: 'pan', startX: e.clientX, startY: e.clientY, panX, panY });
+      return;
+    }
+
     const p = toWorld(e.clientX, e.clientY);
     setDrag({ kind: 'marquee', x0: p.x, y0: p.y, x1: p.x, y1: p.y });
   }
 
   function handlePointerMove(e: React.PointerEvent) {
+    if (e.pointerType === 'touch' && pointers.current.has(e.pointerId)) {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (pinch.current) {
+      const st = pinchState();
+      if (!st) return;
+      const start = pinch.current;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const newZoom = clamp((start.zoom * st.dist) / start.dist, 8, 240);
+      // El punto del plano que había bajo el centro del pellizco se queda ahí.
+      const mx = start.cx - rect.left;
+      const my = start.cy - rect.top;
+      setView({
+        zoom: newZoom,
+        panX: st.cx - rect.left - ((mx - start.panX) * newZoom) / start.zoom,
+        panY: st.cy - rect.top - ((my - start.panY) * newZoom) / start.zoom,
+      });
+      return;
+    }
+
     if (!drag) return;
 
     if (drag.kind === 'pan') {
@@ -304,7 +406,7 @@ export function Editor2D({
       return;
     }
 
-    if (drag.kind === 'calibrate') {
+    if (drag.kind === 'calibrate' || drag.kind === 'measure') {
       // Con Mayús, el trazo se fuerza a horizontal o vertical.
       let x1 = p.x;
       let y1 = p.y;
@@ -316,7 +418,13 @@ export function Editor2D({
     }
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(e?: React.PointerEvent) {
+    if (e && e.pointerType === 'touch') {
+      pointers.current.delete(e.pointerId);
+      if (pointers.current.size < 2) pinch.current = null;
+      // Al levantar un dedo de un pellizco no hay nada que confirmar.
+      if (pointers.current.size >= 1 && !drag) return;
+    }
     if (!drag) return;
 
     if (drag.kind === 'move' && (drag.dx !== 0 || drag.dy !== 0)) {
@@ -391,6 +499,11 @@ export function Editor2D({
       }
     }
 
+    if (drag.kind === 'measure') {
+      const d = Math.hypot(drag.x1 - drag.x0, drag.y1 - drag.y0);
+      setMeasurement(d > 0.01 ? { x0: drag.x0, y0: drag.y0, x1: drag.x1, y1: drag.y1 } : null);
+    }
+
     if (drag.kind === 'marquee') {
       const minX = Math.min(drag.x0, drag.x1);
       const maxX = Math.max(drag.x0, drag.x1);
@@ -448,6 +561,7 @@ export function Editor2D({
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
         <defs>
@@ -728,19 +842,13 @@ export function Editor2D({
                     </text>
                   ) : null}
 
-                  {showMeasures ? (
-                    <text
-                      x={0}
-                      y={0}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill="var(--ef-text)"
-                      fontSize={10 / zoom}
-                      pointerEvents="none"
-                      opacity={0.75}
-                    >
-                      {fmtNum(l, 2)}×{fmtNum(w, 2)}
-                    </text>
+                  {(showMeasures || isSelected) && o.shape !== 'text' ? (
+                    <MeasureChip
+                      zoom={zoom}
+                      rotation={-Number(o.rotation)}
+                      accent={isSelected}
+                      text={measureText(o)}
+                    />
                   ) : null}
                 </g>
               );
@@ -898,6 +1006,44 @@ export function Editor2D({
             </g>
           ) : null}
 
+          {/* Regla */}
+          {(() => {
+            const m = drag?.kind === 'measure' ? drag : measurement;
+            if (!m) return null;
+            const d = Math.hypot(m.x1 - m.x0, m.y1 - m.y0);
+            if (d < 0.005) return null;
+            return (
+              <g pointerEvents="none">
+                <line
+                  x1={m.x0}
+                  y1={m.y0}
+                  x2={m.x1}
+                  y2={m.y1}
+                  stroke="var(--ef-accent-soft)"
+                  strokeWidth={strokePx * 2.5}
+                  strokeLinecap="round"
+                />
+                {[
+                  [m.x0, m.y0],
+                  [m.x1, m.y1],
+                ].map(([cx, cy], i) => (
+                  <circle
+                    key={i}
+                    cx={cx}
+                    cy={cy}
+                    r={4 / zoom}
+                    fill="var(--ef-canvas)"
+                    stroke="var(--ef-accent-soft)"
+                    strokeWidth={strokePx * 2}
+                  />
+                ))}
+                <g transform={`translate(${(m.x0 + m.x1) / 2},${(m.y0 + m.y1) / 2})`}>
+                  <MeasureChip zoom={zoom} rotation={0} accent text={`${fmtNum(d, 2)} m`} />
+                </g>
+              </g>
+            );
+          })()}
+
           {/* Selección por marco */}
           {drag?.kind === 'marquee' ? (
             <rect
@@ -929,6 +1075,65 @@ export function Editor2D({
         </ZoomButton>
       </div>
     </div>
+  );
+}
+
+/** Cotas de un objeto: "1,20 × 0,80 × 0,75 m" (+ altura sobre el suelo). */
+function measureText(o: PlanObject) {
+  const l = fmtNum(Number(o.length_m), 2);
+  const w = fmtNum(Number(o.width_m), 2);
+  const h = fmtNum(Number(o.height_m), 2);
+  const base = o.shape === 'line' ? `${l} m` : `${l} × ${w} × ${h} m`;
+  const z = Number(o.z) || 0;
+  return z > 0.001 ? `${base}  ↑${fmtNum(z, 2)} m` : base;
+}
+
+/**
+ * Etiqueta de cotas con fondo. El texto suelto sobre el plano era ilegible;
+ * esto dibuja una "pastilla" de tamaño constante en pantalla (px / zoom) y
+ * compensa la rotación del objeto para que siempre se lea en horizontal.
+ */
+function MeasureChip({
+  text,
+  zoom,
+  rotation = 0,
+  accent = false,
+}: {
+  text: string;
+  zoom: number;
+  rotation?: number;
+  accent?: boolean;
+}) {
+  const fz = 11 / zoom;
+  const padX = 5 / zoom;
+  const padY = 3 / zoom;
+  // Ancho aproximado: el SVG no mide texto sin medirlo en el DOM.
+  const w = text.length * fz * 0.54 + padX * 2;
+  const h = fz + padY * 2;
+  return (
+    <g pointerEvents="none" transform={`rotate(${rotation})`}>
+      <rect
+        x={-w / 2}
+        y={-h / 2}
+        width={w}
+        height={h}
+        rx={h / 2}
+        fill="color-mix(in oklab, var(--ef-canvas) 86%, transparent)"
+        stroke={accent ? 'var(--ef-accent-soft)' : 'var(--ef-line-strong)'}
+        strokeWidth={1 / zoom}
+      />
+      <text
+        x={0}
+        y={0}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill={accent ? 'var(--ef-accent-soft)' : 'var(--ef-muted)'}
+        fontSize={fz}
+        fontWeight={600}
+      >
+        {text}
+      </text>
+    </g>
   );
 }
 

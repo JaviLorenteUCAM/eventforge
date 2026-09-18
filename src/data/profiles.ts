@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { callAccess, supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 import { ApiError, selectAll, updateRow } from './api';
 import { qk } from './keys';
@@ -34,7 +34,49 @@ export function useUpdateProfile() {
   });
 }
 
-/** Cambia la contraseña/estado no: solo desactiva (el alta se hace con seed/admin). */
+/**
+ * ALTA Y BAJA DE PERSONAS
+ *
+ * Crear o borrar a alguien toca `auth.users`, y eso solo puede hacerse con la
+ * service_role key, que jamas llega al navegador. Por eso ambas operaciones
+ * pasan por la Edge Function `access`, que valida en el servidor que quien
+ * llama tiene sesion y es administrador.
+ */
+export function useCreateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; roleTitle: string; color: string; isAdmin: boolean }) =>
+      callAccess<{ profile: Profile }>(
+        {
+          action: 'admin_create_user',
+          name: input.name,
+          roleTitle: input.roleTitle,
+          color: input.color,
+          isAdmin: input.isAdmin,
+        },
+        { authenticated: true },
+      ).then((r) => r.profile),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.profiles });
+    },
+  });
+}
+
+export function useDeleteProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (profileId: string) =>
+      callAccess<{ ok: true }>(
+        { action: 'admin_delete_user', profileId },
+        { authenticated: true },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.profiles });
+    },
+  });
+}
+
+/** Desactivar es la via suave: conserva el historial y bloquea el acceso. */
 export function useSetProfileActive() {
   const qc = useQueryClient();
   return useMutation({

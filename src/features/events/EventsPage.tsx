@@ -201,7 +201,7 @@ export function EventsPage() {
           message={
             events.data?.length
               ? 'Prueba a cambiar la búsqueda o el estado seleccionado.'
-              : 'Crea el primero y empieza a planificar plano, material y transporte.'
+              : 'Crea el primero y empieza a planificar plano, material y tareas.'
           }
           icon={<CalendarRange className="size-5" />}
           action={
@@ -317,7 +317,7 @@ export function EventsPage() {
         message={
           <>
             Se eliminará <strong className="text-ink">{toDelete?.name}</strong> junto con su plano,
-            horarios, tareas y cargas de transporte. Esta acción no se puede deshacer.
+            horarios y tareas. Esta acción no se puede deshacer.
           </>
         }
       />
@@ -468,7 +468,7 @@ function DuplicateModal({ event, onClose }: { event: EventRow | null; onClose: (
       onClose={onClose}
       size="sm"
       title="Duplicar evento"
-      description="Se copian plano, objetos, conexiones, horarios, tareas y transporte."
+      description="Se copian el plano completo (objetos, cables e imágenes de fondo), los horarios y las tareas."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={duplicate.isPending}>
