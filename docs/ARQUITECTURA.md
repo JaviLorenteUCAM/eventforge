@@ -104,10 +104,42 @@ cualquier nivel de zoom.
 | Un dedo sobre el fondo | Desplazar el plano (en ratón, marco de selección) |
 | Dos dedos | Pellizcar para hacer zoom, manteniendo bajo los dedos el mismo punto del plano |
 
+En la vista 3D los botones van remapeados (`OrbitControls.mouseButtons`): el izquierdo se
+deja libre para seleccionar y arrastrar objetos, el derecho gira la cámara y la rueda pulsada
+desplaza. Por defecto three.js pone el giro en el izquierdo, que es justo el que hace falta
+para trabajar.
+
 El pellizco se resuelve llevando la cuenta de los punteros activos (`pointers`, un `Map` por
 `pointerId`): cuando aparece el segundo dedo se cancela el arrastre en curso y se guarda el
 estado inicial del gesto (distancia, centro, zoom y desplazamiento). Es la única forma de que
 un pellizco que empieza encima de un objeto no lo arrastre.
+
+### Cables con trazado
+
+Un cable guarda solo sus **puntos intermedios** (`plan_connections.waypoints`, jsonb en
+metros). Los dos extremos NO se guardan: se calculan a partir de los objetos conectados, de
+modo que al mover una mesa el cable la sigue sin tener que reescribir el trazo.
+
+Al dibujar llegan decenas de puntos por segundo. Antes de guardar se aplica Douglas-Peucker
+(`simplifyPath`, tolerancia 8 cm): se conservan las curvas y se tiran los puntos que caen
+prácticamente sobre la recta anterior. Una lista vacía es un cable recto, que es como se
+comportaban todos antes de esta versión.
+
+La longitud es el recorrido en planta más el desnivel entre los dos extremos
+(`cableLength`), y quien la pide le suma la holgura.
+
+### Estilos del material
+
+`warehouse_item_variants` describe acabados del mismo objeto, cada uno con sus unidades y su
+textura. `plan_objects.variant_id` recuerda con cuál se colocó cada copia.
+
+Dos decisiones que conviene no deshacer:
+
+1. **Las unidades del estilo son suyas.** Seis manteles negros no cubren la necesidad de uno
+   rojo, así que `computeVariantStock()` cuenta por estilo y no reparte entre ellos.
+2. **`adds_material` es lo que separa los dos casos de uso.** Sin él, un photocall con otro
+   dibujo pediría un «photocall» extra en el listado, y una mesa con mantel no pediría el
+   mantel. Es una casilla en la interfaz precisamente porque solo lo sabe quien monta.
 
 ### Almacén primero
 

@@ -5,6 +5,7 @@ import type {
   WarehouseBox,
   WarehouseBoxItem,
   WarehouseItem,
+  WarehouseItemVariant,
 } from '@/lib/types';
 import { deleteRow, insertRow, selectAll, updateRow } from './api';
 import { qk } from './keys';
@@ -122,6 +123,42 @@ export function useDeleteItem() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.warehouseItems });
       void qc.invalidateQueries({ queryKey: qk.warehouseBoxItems });
+    },
+  });
+}
+
+// --- Estilos del material --------------------------------------------------
+// Se cargan todos de una vez: son pocos y se necesitan a la vez en el almacén,
+// en el panel del plano y en el listado de material.
+export function useItemVariants() {
+  return useQuery({
+    queryKey: qk.itemVariants,
+    queryFn: () =>
+      selectAll<WarehouseItemVariant>('warehouse_item_variants', (q) =>
+        q.order('sort_order', { ascending: true }).order('name', { ascending: true }),
+      ),
+  });
+}
+
+export function useUpsertVariant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id?: string; values: Partial<WarehouseItemVariant> }) =>
+      input.id
+        ? updateRow<WarehouseItemVariant>('warehouse_item_variants', input.id, input.values)
+        : insertRow<WarehouseItemVariant>('warehouse_item_variants', input.values),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.itemVariants });
+    },
+  });
+}
+
+export function useDeleteVariant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRow('warehouse_item_variants', id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.itemVariants });
     },
   });
 }

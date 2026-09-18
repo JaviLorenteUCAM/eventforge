@@ -17,7 +17,12 @@ import type { ObjectKind, PlanConnection, PlanIssue, PlanObject } from './types'
 
 const POWER_SOURCES: ObjectKind[] = ['power_source'];
 const POWER_RELAYS: ObjectKind[] = ['power_strip'];
-const NETWORK_SOURCES: ObjectKind[] = ['network_switch', 'network_router'];
+/**
+ * Origen de red: los switches y routers reparten, y el «punto de red
+ * principal» es la acometida del edificio (la roseta que trae Internet). Sin
+ * ninguno de los tres en el plano, nada tiene red.
+ */
+const NETWORK_SOURCES: ObjectKind[] = ['network_switch', 'network_router', 'network_source'];
 
 function buildAdjacency(connections: PlanConnection[], kind: 'power' | 'network') {
   const adj = new Map<string, string[]>();
@@ -81,7 +86,7 @@ export function analyzePlan(objects: PlanObject[], connections: PlanConnection[]
         title: `${nameOf(o)} — Sin electricidad`,
         detail:
           powerSources.length === 0
-            ? 'No hay ninguna fuente eléctrica en el plano (cuadro o toma de pared).'
+            ? 'No hay ningún punto de luz en el plano (cuadro, toma de pared o acometida).'
             : 'No hay ningún cable que lleve corriente hasta este objeto.',
       });
     }
@@ -122,7 +127,7 @@ export function analyzePlan(objects: PlanObject[], connections: PlanConnection[]
         title: `${nameOf(o)} — Sin red`,
         detail:
           netSources.length === 0
-            ? 'No hay ningún switch ni router en el plano.'
+            ? 'No hay ningún punto de red principal, switch ni router en el plano.'
             : 'No hay ningún cable de red que llegue hasta este objeto.',
       });
     }

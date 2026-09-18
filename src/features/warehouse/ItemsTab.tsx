@@ -40,6 +40,7 @@ import {
 } from '@/lib/types';
 import { fmtNum, normalize, volumeOf } from '@/lib/utils';
 import { TextureSection, type TextureFields } from './TextureSection';
+import { VariantsSection } from './VariantsSection';
 import { exportItemsToSheet } from './sheetExport';
 
 const UNITS: { value: Unit; label: string }[] = [
@@ -646,6 +647,10 @@ export function ItemFormModal({
             onPathChange={setTexturePath}
             onFieldChange={(patch: Partial<TextureFields>) => setForm((f) => ({ ...f, ...patch }))}
           />
+        </div>
+
+        <div className="sm:col-span-2">
+          <VariantsSection item={item} />
         </div>
 
         <Field label="Descripción" className="sm:col-span-2">

@@ -14,7 +14,7 @@ import {
   Stat,
 } from '@/components/ui';
 import { usePlanConnections, usePlanObjects, usePlans } from '@/data/plans';
-import { useCategories, useCatalog, useWarehouseItems } from '@/data/warehouse';
+import { useCategories, useCatalog, useItemVariants, useWarehouseItems } from '@/data/warehouse';
 import { useEvent } from '@/data/events';
 import { computeMaterialNeeds, materialToCsv, summarizeMaterial } from '@/lib/materials';
 import { downloadBlob, fmtM3, fmtNum, normalize, slugify } from '@/lib/utils';
@@ -28,6 +28,7 @@ export function MaterialPage() {
   const connections = usePlanConnections(planId);
   const catalog = useCatalog();
   const items = useWarehouseItems();
+  const variants = useItemVariants();
   const categories = useCategories();
 
   const [search, setSearch] = useState('');
@@ -40,8 +41,9 @@ export function MaterialPage() {
         connections.data ?? [],
         catalog.data ?? [],
         items.data ?? [],
+        variants.data ?? [],
       ),
-    [objects.data, connections.data, catalog.data, items.data],
+    [objects.data, connections.data, catalog.data, items.data, variants.data],
   );
 
   const summary = summarizeMaterial(needs);

@@ -3,6 +3,7 @@ import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Grid, Html, Line, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Plan, PlanBackground, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
+import { cablePath } from '@/lib/geometry';
 import { snap as snapTo } from '@/lib/utils';
 import { usePlanStore } from './planStore';
 import type { CommitUpdate } from './Editor2D';
@@ -315,15 +316,29 @@ function Scene({
         const pb = positionOf(b);
         const ya = Number(a.z) + Number(a.height_m) * 0.35;
         const yb = Number(b.z) + Number(b.height_m) * 0.35;
-        const mid: [number, number, number] = [
-          (pa.x + pb.x) / 2,
-          Math.min(ya, yb) * 0.4 + 0.03,
-          (pa.y + pb.y) / 2,
-        ];
+
+        // El trazo se dibuja en planta; aquí se le da altura: sale del aparato,
+        // baja al suelo para recorrer el camino y vuelve a subir al destino.
+        const flat = cablePath({ ...a, x: pa.x, y: pa.y }, { ...b, x: pb.x, y: pb.y }, c.waypoints);
+        const floor = 0.03;
+        const points: [number, number, number][] = flat.map((p, i) => {
+          if (i === 0) return [p.x, ya, p.y];
+          if (i === flat.length - 1) return [p.x, yb, p.y];
+          return [p.x, floor, p.y];
+        });
+        if (points.length === 2) {
+          // Cable recto: una curva suave queda más legible que una línea a ras.
+          points.splice(1, 0, [
+            (pa.x + pb.x) / 2,
+            Math.min(ya, yb) * 0.4 + floor,
+            (pa.y + pb.y) / 2,
+          ]);
+        }
+
         return (
           <Line
             key={c.id}
-            points={[[pa.x, ya, pa.y], mid, [pb.x, yb, pb.y]]}
+            points={points}
             color={c.color}
             lineWidth={c.kind === 'network' ? 1.6 : 2.2}
             dashed={c.kind === 'network'}
@@ -332,6 +347,15 @@ function Scene({
         );
       })}
 
+      {/*
+        Botones del ratón:
+          IZQUIERDO -> libre, para seleccionar y arrastrar objetos
+          DERECHO   -> girar la cámara
+          RUEDA     -> desplazar la vista (y girándola, acercar y alejar)
+
+        Por defecto three.js pone el giro en el botón izquierdo, que es
+        justamente el que hace falta para trabajar con los objetos.
+      */}
       <OrbitControls
         ref={controlsRef}
         target={[W / 2, 0.6, D / 2]}
@@ -340,6 +364,12 @@ function Scene({
         maxPolarAngle={Math.PI / 2.05}
         minDistance={1.5}
         maxDistance={Math.max(W, D) * 4}
+        mouseButtons={{
+          LEFT: undefined as unknown as THREE.MOUSE,
+          MIDDLE: THREE.MOUSE.PAN,
+          RIGHT: THREE.MOUSE.ROTATE,
+        }}
+        touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
         makeDefault
       />
     </>

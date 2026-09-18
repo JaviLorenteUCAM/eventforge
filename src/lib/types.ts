@@ -69,6 +69,7 @@ export const OBJECT_KINDS = [
   'network_switch',
   'network_router',
   'network_node',
+  'network_source',
   'decor',
   'tool',
 ] as const;
@@ -84,6 +85,7 @@ export const OBJECT_KIND_LABEL: Record<ObjectKind, string> = {
   network_switch: 'Switch',
   network_router: 'Router',
   network_node: 'Punto de red',
+  network_source: 'Punto de red principal',
   decor: 'Decoración',
   tool: 'Herramienta',
 };
@@ -249,6 +251,38 @@ export interface WarehouseItem {
   updated_at: string;
 }
 
+/**
+ * ESTILO DE UN MATERIAL
+ *
+ * Mismo objeto, distinto acabado: los cinco photocalls con cinco dibujos, las
+ * mesas con mantel negro o rojo. Cada estilo tiene sus propias unidades y su
+ * propia textura, y decide si además cuenta como material aparte (el mantel
+ * hay que llevarlo; el dibujo del photocall no es un bulto).
+ */
+export interface WarehouseItemVariant {
+  id: string;
+  item_id: string;
+  name: string;
+  quantity: number;
+  /** Sin color propio se hereda el del material. */
+  color: string | null;
+  texture_path: string | null;
+  texture_mode: TextureMode;
+  texture_scale: number;
+  texture_offset_x: number;
+  texture_offset_y: number;
+  texture_rotation: number;
+  /** ¿Aparece como línea propia en el listado de material del evento? */
+  adds_material: boolean;
+  /** Con qué nombre aparece ahí. Vacío = el del estilo. */
+  material_name: string;
+  material_unit: Unit;
+  sort_order: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Existencias de un artículo frente a lo ya colocado en el plano. */
 export interface StockInfo {
   total: number;
@@ -297,6 +331,8 @@ export interface PlanObject {
   plan_id: string;
   catalog_id: string | null;
   warehouse_item_id: string | null;
+  /** Estilo concreto del material con el que se colocó, si lo tiene. */
+  variant_id: string | null;
   label: string;
   kind: ObjectKind;
   category_id: string | null;
@@ -321,6 +357,12 @@ export interface PlanObject {
   updated_at: string;
 }
 
+/** Punto del trazado de un cable, en metros sobre el plano. */
+export interface Waypoint {
+  x: number;
+  y: number;
+}
+
 export interface PlanConnection {
   id: string;
   plan_id: string;
@@ -331,6 +373,11 @@ export interface PlanConnection {
   length_m: number;
   color: string;
   notes: string;
+  /**
+   * Puntos intermedios por los que pasa el cable. Vacío = línea recta entre
+   * los dos aparatos, que es como se comportaban todos los cables antes.
+   */
+  waypoints: Waypoint[];
   created_at: string;
   updated_at: string;
 }
@@ -401,6 +448,8 @@ export interface MaterialNeed {
   missing: number;
   unit: Unit;
   warehouseItemId: string | null;
+  /** Si la línea sale de un estilo (un mantel, una funda), cuál. */
+  variantId?: string | null;
   totalWeightKg: number;
   totalVolumeM3: number;
 }

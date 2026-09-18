@@ -5,6 +5,7 @@ import type {
   PlanObject,
   StockInfo,
   WarehouseItem,
+  WarehouseItemVariant,
 } from './types';
 import { normalize, round } from './utils';
 
@@ -20,6 +21,16 @@ import { normalize, round } from './utils';
  * Los objetos sin artículo de almacén (figuras sueltas o piezas creadas para el
  * evento en la biblioteca) se agrupan por nombre y no tienen existencias: se
  * listan aparte como material propio del evento.
+ *
+ * ESTILOS
+ * -------
+ * Un artículo puede tener estilos (mantel negro / mantel rojo, cada photocall
+ * con su dibujo). El objeto del plano recuerda con cuál se colocó, de modo que:
+ *
+ *   · las existencias se cuentan también por estilo, y
+ *   · los estilos marcados como «material aparte» añaden su propia línea al
+ *     listado: tres mesas, dos con mantel negro y una con rojo, piden 3 mesas,
+ *     2 manteles negros y 1 mantel rojo.
  */
 
 /** Unidades de cada artículo del almacén ya comprometidas en el plano. */
@@ -42,14 +53,36 @@ export function computeStock(
   return stock;
 }
 
+/** Lo mismo, pero por estilo: «quedan 2 de las 6 mesas con mantel negro». */
+export function computeVariantStock(
+  variants: WarehouseItemVariant[],
+  planObjects: PlanObject[],
+): Map<string, StockInfo> {
+  const used = new Map<string, number>();
+  for (const o of planObjects) {
+    if (!o.variant_id) continue;
+    used.set(o.variant_id, (used.get(o.variant_id) ?? 0) + 1);
+  }
+
+  const stock = new Map<string, StockInfo>();
+  for (const v of variants) {
+    const total = Number(v.quantity) || 0;
+    const u = used.get(v.id) ?? 0;
+    stock.set(v.id, { total, used: u, available: total - u });
+  }
+  return stock;
+}
+
 export function computeMaterialNeeds(
   objects: PlanObject[],
   connections: PlanConnection[],
   catalog: CatalogObject[],
   items: WarehouseItem[],
+  variants: WarehouseItemVariant[] = [],
 ): MaterialNeed[] {
   const itemById = new Map(items.map((i) => [i.id, i]));
   const catalogById = new Map(catalog.map((c) => [c.id, c]));
+  const variantById = new Map(variants.map((v) => [v.id, v]));
 
   const byName = new Map<string, WarehouseItem[]>();
   for (const it of items) {
@@ -85,6 +118,7 @@ export function computeMaterialNeeds(
   for (const o of objects) {
     const item = o.warehouse_item_id ? itemById.get(o.warehouse_item_id) : undefined;
     const cat = o.catalog_id ? catalogById.get(o.catalog_id) : undefined;
+    const variant = o.variant_id ? variantById.get(o.variant_id) : undefined;
 
     const name = item?.name || cat?.name || o.label || 'Objeto sin nombre';
     const key = item
@@ -106,6 +140,26 @@ export function computeMaterialNeeds(
       1,
       (Number(o.length_m) || 0) * (Number(o.width_m) || 0) * (Number(o.height_m) || 0),
     );
+
+    // El estilo puede ser algo que haya que llevar aparte: el mantel de la
+    // mesa es un bulto más, el dibujo del photocall no.
+    if (variant?.adds_material) {
+      const extraKey = `variant:${variant.id}`;
+      add(
+        extraKey,
+        {
+          key: extraKey,
+          name: variant.material_name.trim() || variant.name,
+          catalogId: null,
+          categoryId: item?.category_id ?? null,
+          unit: variant.material_unit ?? 'ud',
+          warehouseItemId: null,
+          variantId: variant.id,
+        },
+        1,
+        0,
+      );
+    }
   }
 
   // --- Cables (metros lineales) -------------------------------------------
@@ -126,7 +180,11 @@ export function computeMaterialNeeds(
     .map((need) => {
       let available = 0;
 
-      if (need.warehouseItemId) {
+      if (need.variantId) {
+        // Las unidades de un estilo son suyas: seis manteles negros no cubren
+        // la necesidad de uno rojo.
+        available = Number(variantById.get(need.variantId)?.quantity ?? 0);
+      } else if (need.warehouseItemId) {
         available = Number(itemById.get(need.warehouseItemId)?.quantity ?? 0);
       } else {
         // Los cables y los objetos sueltos se intentan casar por nombre.

@@ -17,6 +17,7 @@ export const qk = {
   catalog: ['object-catalog'] as const,
 
   warehouseItems: ['warehouse-items'] as const,
+  itemVariants: ['warehouse-item-variants'] as const,
   warehouseBoxes: ['warehouse-boxes'] as const,
   warehouseBoxItems: ['warehouse-box-items'] as const,
 

@@ -81,6 +81,8 @@ const FILES = [
   '0004_functions.sql',
   '0005_backgrounds_scenarios_textures.sql',
   '0006_warehouse_first.sql',
+  '0007_cable_paths_and_feeds.sql',
+  '0008_item_variants.sql',
 ];
 let allOk = true;
 
@@ -351,6 +353,36 @@ console.log(
   link.rows[0].n === 1
     ? '  \x1b[32m✓\x1b[0m Los objetos del plano se enlazan con el almacén'
     : '  \x1b[31m✗\x1b[0m El enlace con el almacén no funciona',
+);
+
+// Cables trazados a mano: los puntos intermedios viajan como jsonb.
+await db.exec(`
+  insert into public.plan_objects (id, plan_id, label, kind, length_m, width_m, height_m)
+  values ('11111111-1111-4111-8111-111111111111', '${planId}', 'Punto de luz', 'power_source', 0.12, 0.05, 0.12),
+         ('22222222-2222-4222-8222-222222222222', '${planId}', 'Punto de red',  'network_source', 0.12, 0.05, 0.12)
+`);
+await db.exec(`
+  insert into public.plan_connections (plan_id, kind, from_object_id, to_object_id, cable_type, length_m, waypoints)
+  values ('${planId}', 'power',
+          '11111111-1111-4111-8111-111111111111',
+          '22222222-2222-4222-8222-222222222222',
+          'Manguera 3G1.5', 12.5,
+          '[{"x":1,"y":2},{"x":4,"y":2},{"x":4,"y":7}]'::jsonb)
+`);
+const cable = await db.query(`
+  select jsonb_array_length(waypoints) as puntos, waypoints->1->>'x' as x1
+    from public.plan_connections
+   where cable_type = 'Manguera 3G1.5'
+`);
+console.log(
+  cable.rows[0]?.puntos === 3 && cable.rows[0]?.x1 === '4'
+    ? '  \x1b[32m✓\x1b[0m El cable guarda su trazado punto a punto'
+    : '  \x1b[31m✗\x1b[0m Los puntos intermedios del cable no se guardan',
+);
+
+await mustFail(
+  'Un trazado que no sea una lista se rechaza',
+  `update public.plan_connections set waypoints = '{"x":1}'::jsonb where cable_type = 'Manguera 3G1.5'`,
 );
 
 await mustFail(

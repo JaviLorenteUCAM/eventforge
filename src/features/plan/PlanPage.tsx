@@ -38,17 +38,27 @@ import {
   useSnapshots,
   useUpdatePlan,
 } from '@/data/plans';
-import { useCatalog, useCategories, useWarehouseItems } from '@/data/warehouse';
+import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
 import { useRealtime } from '@/data/realtime';
 import { qk } from '@/data/keys';
 import { analyzePlan, powerBudget } from '@/lib/issues';
 import { BUCKETS, resolveUrl, uploadBlob } from '@/lib/storage';
-import type { CatalogObject, Plan, PlanConnection, PlanIssue, PlanObject, WarehouseItem } from '@/lib/types';
+import type {
+  CatalogObject,
+  Plan,
+  PlanConnection,
+  PlanIssue,
+  PlanObject,
+  WarehouseItem,
+  WarehouseItemVariant,
+  Waypoint,
+} from '@/lib/types';
+import { cableLength, restingZ } from '@/lib/geometry';
 import { cn, fmtNum, round, uid } from '@/lib/utils';
 import { Editor2D, type CalibrationLine, type CommitUpdate } from './Editor2D';
 import { Editor3D } from './Editor3D';
 import { Inspector } from './Inspector';
-import { ObjectLibrary, type AddPayload, type BasicShape } from './ObjectLibrary';
+import { ObjectLibrary, type AddPayload, type BasicShape, type DropPayload } from './ObjectLibrary';
 import { BackgroundPanel } from './BackgroundPanel';
 import { CalibrationModal, type CalibrationResult } from './CalibrationModal';
 import { LoadScenarioModal, SaveScenarioModal } from './ScenarioModals';
@@ -90,6 +100,7 @@ export function PlanPage() {
   const catalog = useCatalog();
   const categories = useCategories();
   const items = useWarehouseItems();
+  const variants = useItemVariants();
   const updatePlan = useUpdatePlan();
   const snapshots = useSnapshots(eventId);
   const createSnapshot = useCreateSnapshot();
@@ -168,7 +179,7 @@ export function PlanPage() {
   useEffect(() => {
     const paths = [
       ...new Set(
-        [...(catalog.data ?? []), ...(items.data ?? [])]
+        [...(catalog.data ?? []), ...(items.data ?? []), ...(variants.data ?? [])]
           .map((c) => c.texture_path)
           .filter(Boolean as never),
       ),
@@ -189,7 +200,7 @@ export function PlanPage() {
     return () => {
       alive = false;
     };
-  }, [catalog.data, items.data]);
+  }, [catalog.data, items.data, variants.data]);
 
   useRealtime(
     `plan-${plan?.id}`,
@@ -249,15 +260,30 @@ export function PlanPage() {
   const selectedConnection = connectionList.find((c) => c.id === selectedConnectionId) ?? null;
   const selectedBackground = backgroundList.find((b) => b.id === selectedBackgroundId) ?? null;
 
-  /** Textura efectiva de cada objeto, heredada de su ficha de origen. */
+  /**
+   * Textura efectiva de cada objeto.
+   *
+   * Manda el ESTILO con el que se colocó (el photocall de este año, el mantel
+   * rojo); si no tiene, se hereda la de su ficha de origen. Las medidas del
+   * atlas salen siempre de la ficha, que es para la que se exportó la
+   * plantilla.
+   */
   const textures = useMemo(() => {
     const byCatalog = new Map((catalog.data ?? []).map((c) => [c.id, c]));
     const byItem = new Map((items.data ?? []).map((i) => [i.id, i]));
+    const byVariant = new Map((variants.data ?? []).map((v) => [v.id, v]));
     const map = new Map<string, TextureSpec>();
     for (const o of objectList) {
-      const c =
+      const base =
         (o.warehouse_item_id ? byItem.get(o.warehouse_item_id) : undefined) ??
         (o.catalog_id ? byCatalog.get(o.catalog_id) : undefined);
+      const variant = o.variant_id ? byVariant.get(o.variant_id) : undefined;
+      const c =
+        variant?.texture_path && base
+          ? { ...base, texture_path: variant.texture_path, texture_mode: variant.texture_mode,
+              texture_scale: variant.texture_scale, texture_offset_x: variant.texture_offset_x,
+              texture_offset_y: variant.texture_offset_y, texture_rotation: variant.texture_rotation }
+          : base;
       if (!c?.texture_path) continue;
       const url = textureUrls.get(c.texture_path);
       if (!url) continue;
@@ -279,7 +305,7 @@ export function PlanPage() {
       });
     }
     return map;
-  }, [objectList, catalog.data, items.data, textureUrls]);
+  }, [objectList, catalog.data, items.data, variants.data, textureUrls]);
 
   // --- Imágenes de fondo ----------------------------------------------------
   const handleBackgroundUploaded = useCallback(
@@ -370,16 +396,25 @@ export function PlanPage() {
   }, [plan]);
 
   const handleAdd = useCallback(
-    async (payload: AddPayload) => {
+    async (payload: AddPayload, at?: Waypoint) => {
       if (!plan) return;
-      const center = mode === '2d' ? viewportCenter() : { x: Number(plan.width_m) / 2, y: Number(plan.depth_m) / 2 };
-      const jitter = (objectList.length % 5) * 0.25;
+      const center = at
+        ? at
+        : mode === '2d'
+          ? viewportCenter()
+          : { x: Number(plan.width_m) / 2, y: Number(plan.depth_m) / 2 };
+      // Al soltarlo en un punto concreto no se desplaza; al añadirlo desde la
+      // lista sí, para que no se apilen todos en el mismo sitio.
+      const jitter = at ? 0 : (objectList.length % 5) * 0.25;
+      const x = round(center.x + jitter, 2);
+      const y = round(center.y + jitter, 2);
 
       const base = {
         plan_id: plan.id,
-        x: round(center.x + jitter, 2),
-        y: round(center.y + jitter, 2),
-        z: 0,
+        x,
+        y,
+        // Si cae encima de una mesa, se apoya en la mesa en vez de atravesarla.
+        z: restingZ(objectList, x, y),
         rotation: 0,
       };
 
@@ -387,17 +422,18 @@ export function PlanPage() {
       // biblioteca: lo único que cambia es a qué ficha queda enlazado.
       const fromSource = (
         src: WarehouseItem | CatalogObject,
-        link: { warehouse_item_id: string | null; catalog_id: string | null },
+        link: { warehouse_item_id: string | null; catalog_id: string | null; variant_id?: string | null },
+        variant?: WarehouseItemVariant | null,
       ) => ({
         ...base,
         ...link,
-        label: src.name,
+        label: variant ? `${src.name} · ${variant.name}` : src.name,
+        color: variant?.color || src.color,
         kind: src.kind,
         category_id: src.category_id,
         length_m: Number(src.length_m),
         width_m: Number(src.width_m),
         height_m: Number(src.height_m),
-        color: src.color,
         shape: src.shape,
         requires_power: src.requires_power,
         requires_network: src.requires_network,
@@ -410,7 +446,15 @@ export function PlanPage() {
         payload.source === 'shape'
           ? { ...base, ...BASIC_SHAPES[payload.shape], kind: 'generic' as const, color: '#94a3b8' }
           : payload.source === 'warehouse'
-            ? fromSource(payload.item, { warehouse_item_id: payload.item.id, catalog_id: null })
+            ? fromSource(
+                payload.item,
+                {
+                  warehouse_item_id: payload.item.id,
+                  catalog_id: null,
+                  variant_id: payload.variant?.id ?? null,
+                },
+                payload.variant,
+              )
             : fromSource(payload.catalog, {
                 warehouse_item_id: null,
                 catalog_id: payload.catalog.id || null,
@@ -425,7 +469,87 @@ export function PlanPage() {
         toast.error(err instanceof Error ? err.message : 'No se ha podido añadir el objeto');
       }
     },
-    [plan, mode, viewportCenter, objectList.length, ops, history, setSelection],
+    [plan, mode, viewportCenter, objectList, ops, history, setSelection],
+  );
+
+  /**
+   * Suelta de una ficha arrastrada desde el panel. Llega solo el id, así que
+   * aquí se vuelve a buscar la ficha: el panel no manda objetos enteros por el
+   * portapapeles del navegador.
+   */
+  const handleDropObject = useCallback(
+    (raw: string, at: Waypoint) => {
+      let payload: DropPayload;
+      try {
+        payload = JSON.parse(raw) as DropPayload;
+      } catch {
+        return;
+      }
+
+      if (payload.source === 'shape') {
+        void handleAdd({ source: 'shape', shape: payload.shape }, at);
+        return;
+      }
+      if (payload.source === 'catalog') {
+        const c = catalog.data?.find((x) => x.id === payload.catalogId);
+        if (c) void handleAdd({ source: 'catalog', catalog: c }, at);
+        return;
+      }
+      const item = items.data?.find((i) => i.id === payload.itemId);
+      if (!item) return;
+      const variant = payload.variantId
+        ? (variants.data?.find((v) => v.id === payload.variantId) ?? null)
+        : null;
+      void handleAdd({ source: 'warehouse', item, variant }, at);
+    },
+    [handleAdd, catalog.data, items.data, variants.data],
+  );
+
+  /**
+   * Punto de luz y punto de red: la acometida de la que cuelga todo lo demás.
+   * Se colocan desde la propia herramienta de cableado, que es cuando hacen
+   * falta, sin tener que darlos de alta antes en el almacén.
+   */
+  const handleCreateFeed = useCallback(
+    async (kind: 'power' | 'network', at: Waypoint) => {
+      if (!plan) return;
+      const isPower = kind === 'power';
+      const n = objectList.filter((o) => o.kind === (isPower ? 'power_source' : 'network_source')).length + 1;
+
+      try {
+        const { ids, history: entry } = await ops.addObjects([
+          {
+            plan_id: plan.id,
+            x: round(at.x, 2),
+            y: round(at.y, 2),
+            z: 0,
+            rotation: 0,
+            label: isPower ? `Punto de luz ${n}` : `Punto de red ${n}`,
+            kind: isPower ? 'power_source' : 'network_source',
+            length_m: 0.15,
+            width_m: 0.08,
+            height_m: 0.15,
+            color: isPower ? '#f59e0b' : '#22d3ee',
+            shape: 'box' as const,
+            requires_power: false,
+            requires_network: false,
+            power_w: 0,
+            outlet_count: isPower ? 2 : 0,
+            port_count: isPower ? 0 : 1,
+          },
+        ]);
+        history.push(entry);
+        setSelection(ids);
+        toast.success(
+          isPower
+            ? 'Punto de luz colocado. Lo que no llegue hasta él por cable no tendrá corriente.'
+            : 'Punto de red colocado. Engánchale el router o el switch para repartir la red.',
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No se ha podido crear el punto');
+      }
+    },
+    [plan, objectList, ops, history, setSelection],
   );
 
   const handleDelete = useCallback(async () => {
@@ -461,7 +585,7 @@ export function PlanPage() {
   );
 
   const handleLink = useCallback(
-    async (fromId: string, toId: string) => {
+    async (fromId: string, toId: string, waypoints: Waypoint[] = []) => {
       if (!plan) return;
       const a = objectList.find((o) => o.id === fromId);
       const b = objectList.find((o) => o.id === toId);
@@ -479,16 +603,10 @@ export function PlanPage() {
         return;
       }
 
-      // Longitud estimada: distancia REAL en el espacio (planta + desnivel) más un
-      // 20 % de holgura. La altura cuenta desde el punto de conexión de cada objeto,
-      // que tomamos en su centro vertical (z + altura/2).
-      const za = Number(a.z ?? 0) + Number(a.height_m ?? 0) / 2;
-      const zb = Number(b.z ?? 0) + Number(b.height_m ?? 0) / 2;
-      const distance = Math.hypot(
-        Number(a.x) - Number(b.x),
-        Number(a.y) - Number(b.y),
-        za - zb,
-      );
+      // Longitud estimada: el recorrido REAL del cable —el trazo que se ha
+      // dibujado, o la recta si no se dibujó ninguno— más el desnivel entre los
+      // dos aparatos, y un 20 % de holgura.
+      const distance = cableLength(a, b, waypoints);
       const length = Math.max(1, Math.ceil(distance * 1.2));
 
       try {
@@ -500,6 +618,7 @@ export function PlanPage() {
           cable_type: kind === 'power' ? 'Manguera 3G1.5' : 'Cat6 U/UTP',
           length_m: length,
           color: kind === 'power' ? '#f59e0b' : '#22d3ee',
+          waypoints,
         });
         history.push(entry);
         toast.success(`Cable ${kind === 'power' ? 'eléctrico' : 'de red'} añadido (${length} m)`);
@@ -693,7 +812,12 @@ export function PlanPage() {
 
         <Segmented
           value={tool}
-          onChange={setTool}
+          onChange={(t) => {
+            // Medir y calibrar se hacen sobre la planta: si se eligen desde la
+            // vista 3D, se cambia a 2D en vez de no hacer nada.
+            if ((t === 'measure' || t === 'calibrate') && mode !== '2d') setMode('2d');
+            setTool(t);
+          }}
           size="sm"
           options={[
             {
@@ -834,6 +958,8 @@ export function PlanPage() {
         </div>
       </div>
 
+      {/* Qué hace la herramienta activa. Sin esto, el cable a mano y los
+          puntos de acometida son invisibles hasta que alguien los descubre. */}
       {linkFrom ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-cyan)_12%,transparent)] px-3 py-1.5 text-[12.5px] text-ink">
           <Cable className="size-3.5" />
@@ -841,6 +967,24 @@ export function PlanPage() {
           <button onClick={() => setLinkFrom(null)} className="ml-auto text-accent-soft hover:underline">
             Cancelar
           </button>
+        </div>
+      ) : tool === 'power' || tool === 'network' ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-[color-mix(in_oklab,var(--ef-warn)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
+          <Cable className="size-3.5 shrink-0 text-warn" />
+          <span className="text-ink">
+            Arrastra de un aparato a otro para tirar el cable: pasa por donde lo lleves, no tiene
+            que ser recto.
+          </span>
+          <span className="text-dim">
+            Un clic en el suelo coloca {tool === 'power' ? 'un punto de luz' : 'un punto de red'}, la
+            acometida de la que cuelga todo lo demás.
+          </span>
+        </div>
+      ) : tool === 'measure' ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
+          <Ruler className="size-3.5 shrink-0 text-accent-soft" />
+          <span className="text-ink">Arrastra para medir.</span>
+          <span className="text-dim">Con Mayús la línea se queda recta.</span>
         </div>
       ) : null}
 
@@ -875,7 +1019,9 @@ export function PlanPage() {
               selectedConnectionId={selectedConnectionId}
               onSelectConnection={setSelectedConnectionId}
               onCommit={(u, l) => void commit(u, l)}
-              onLink={(a, b) => void handleLink(a, b)}
+              onLink={(a, b, w) => void handleLink(a, b, w)}
+              onCreateFeed={(k, at) => void handleCreateFeed(k, at)}
+              onDropObject={handleDropObject}
               svgRef={svgRef}
             />
           ) : (

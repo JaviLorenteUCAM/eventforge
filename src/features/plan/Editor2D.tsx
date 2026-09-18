@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Plan, PlanBackground, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
+import type {
+  Plan,
+  PlanBackground,
+  PlanConnection,
+  PlanIssue,
+  PlanObject,
+  Waypoint,
+} from '@/lib/types';
+import {
+  cablePath,
+  objectAt,
+  pathD,
+  restingZ,
+  simplifyPath,
+} from '@/lib/geometry';
 import { clamp, fmtNum, round, snap as snapTo } from '@/lib/utils';
 import { usePlanStore } from './planStore';
 
@@ -49,7 +63,12 @@ interface Props {
   selectedConnectionId: string | null;
   onSelectConnection: (id: string | null) => void;
   onCommit: (updates: CommitUpdate[], label: string) => void;
-  onLink: (fromId: string, toId: string) => void;
+  /** Crea un cable. `waypoints` viene vacío cuando el trazo es recto. */
+  onLink: (fromId: string, toId: string, waypoints: Waypoint[]) => void;
+  /** Alta de un punto de luz o de red desde la propia herramienta de cableado. */
+  onCreateFeed: (kind: 'power' | 'network', at: Waypoint) => void;
+  /** Suelta de un objeto arrastrado desde el panel del almacén. */
+  onDropObject: (payload: string, at: Waypoint) => void;
   svgRef: React.RefObject<SVGSVGElement | null>;
 }
 
@@ -71,7 +90,18 @@ type DragState =
     }
   | { kind: 'calibrate'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
+  /** Cable dibujándose a mano: se van acumulando los puntos del trazo. */
+  | { kind: 'cable'; fromId: string; points: Waypoint[]; overId: string | null }
+  /** Clic con una herramienta de cable sobre el vacío: da de alta una acometida. */
+  | { kind: 'feed'; x: number; y: number; moved: boolean }
   | null;
+
+/**
+ * Formato del portapapeles de arrastre entre el panel de objetos y el plano.
+ * Se usa un tipo propio para que soltar cualquier otra cosa (una imagen, un
+ * texto) no acabe creando un objeto por accidente.
+ */
+export const DROP_TYPE = 'application/x-eventforge-object';
 
 /** Trazo de la regla que se queda en pantalla tras soltar. */
 interface Measurement {
@@ -96,6 +126,8 @@ export function Editor2D({
   onSelectConnection,
   onCommit,
   onLink,
+  onCreateFeed,
+  onDropObject,
   svgRef,
 }: Props) {
   const {
@@ -125,6 +157,7 @@ export function Editor2D({
   const [spaceDown, setSpaceDown] = useState(false);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
+  const [dropAt, setDropAt] = useState<Waypoint | null>(null);
 
   /**
    * GESTOS TÁCTILES
@@ -240,16 +273,27 @@ export function Editor2D({
 
   // --- Interacción sobre un objeto -----------------------------------------
   function handleObjectPointerDown(e: React.PointerEvent, obj: PlanObject) {
+    // La regla y la calibración se trazan POR ENCIMA de los objetos: si se
+    // tragaran el clic, en un plano lleno no habría dónde empezar a medir.
+    if (tool === 'measure' || tool === 'calibrate') return;
+
     e.stopPropagation();
     if (trackDown(e)) return;
     if (spaceDown || e.button === 1) return;
 
-    if (tool !== 'select') {
-      if (!linkFrom) setLinkFrom(obj.id);
-      else if (linkFrom !== obj.id) {
-        onLink(linkFrom, obj.id);
-        setLinkFrom(null);
-      } else setLinkFrom(null);
+    // Cableado: se arrastra desde el aparato de origen hasta el de destino, y
+    // el cable sigue el camino que dibuje la mano.
+    if (tool === 'power' || tool === 'network') {
+      if (e.button !== 0) return;
+      setLinkFrom(obj.id);
+      onSelectConnection(null);
+      setDrag({
+        kind: 'cable',
+        fromId: obj.id,
+        points: [{ x: Number(obj.x), y: Number(obj.y) }],
+        overId: null,
+      });
+      (e.target as Element).setPointerCapture?.(e.pointerId);
       return;
     }
 
@@ -293,8 +337,17 @@ export function Editor2D({
       return;
     }
 
-    if (tool !== 'select') {
-      setLinkFrom(null);
+    // Con una herramienta de cable, un clic en el vacío coloca la acometida:
+    // el punto de luz o el punto de red del que cuelga todo lo demás. Salvo que
+    // hubiera un cable a medio hacer: entonces el clic fuera lo cancela, que es
+    // lo que espera cualquiera.
+    if (tool === 'power' || tool === 'network') {
+      if (linkFrom) {
+        setLinkFrom(null);
+        return;
+      }
+      const p = toWorld(e.clientX, e.clientY);
+      setDrag({ kind: 'feed', x: p.x, y: p.y, moved: false });
       return;
     }
     onSelectConnection(null);
@@ -336,6 +389,30 @@ export function Editor2D({
     }
 
     if (!drag) return;
+
+    if (drag.kind === 'feed') {
+      // Si se arrastra, ya no es un clic: no se crea nada.
+      const p = toWorld(e.clientX, e.clientY);
+      if (!drag.moved && Math.hypot(p.x - drag.x, p.y - drag.y) > 0.15) {
+        setDrag({ ...drag, moved: true });
+      }
+      return;
+    }
+
+    if (drag.kind === 'cable') {
+      const p = toWorld(e.clientX, e.clientY);
+      const last = drag.points[drag.points.length - 1];
+      // Un punto cada pocos centímetros: guardar todos los eventos del ratón
+      // llenaría la fila de ruido sin cambiar el dibujo.
+      const step = Math.max(0.05, 6 / zoom);
+      const over = objectAt(objects, p.x, p.y, { ignore: new Set([drag.fromId]) });
+      if (Math.hypot(p.x - last.x, p.y - last.y) >= step) {
+        setDrag({ ...drag, points: [...drag.points, p], overId: over?.id ?? null });
+      } else if ((over?.id ?? null) !== drag.overId) {
+        setDrag({ ...drag, overId: over?.id ?? null });
+      }
+      return;
+    }
 
     if (drag.kind === 'pan') {
       setView({
@@ -429,18 +506,65 @@ export function Editor2D({
 
     if (drag.kind === 'move' && (drag.dx !== 0 || drag.dy !== 0)) {
       const updates: CommitUpdate[] = [];
+      const moving = new Set(drag.ids);
       for (const id of drag.ids) {
         const o = objectById.get(id);
         if (!o || o.locked) continue;
-        updates.push({
-          id,
-          patch: { x: Number(o.x) + drag.dx, y: Number(o.y) + drag.dy },
-          previous: { x: Number(o.x), y: Number(o.y) },
-        });
+        const x = Number(o.x) + drag.dx;
+        const y = Number(o.y) + drag.dy;
+
+        const patch: Partial<PlanObject> = { x, y };
+        const previous: Partial<PlanObject> = { x: Number(o.x), y: Number(o.y) };
+
+        // Si el objeto estaba APOYADO (en el suelo o encima de algo), se sigue
+        // apoyando en su nuevo sitio: soltarlo sobre una mesa lo sube a la mesa.
+        // Si tenía una altura puesta a mano —un foco colgado a 2 m— no se toca.
+        const wasResting = restingZ(objects, Number(o.x), Number(o.y), moving);
+        if (Math.abs(Number(o.z) - wasResting) < 0.01) {
+          const nowResting = restingZ(objects, x, y, moving);
+          if (Math.abs(nowResting - Number(o.z)) > 0.001) {
+            patch.z = nowResting;
+            previous.z = Number(o.z);
+          }
+        }
+
+        updates.push({ id, patch, previous });
       }
       if (updates.length) {
         onCommit(updates, updates.length > 1 ? `Mover ${updates.length} objetos` : 'Mover objeto');
       }
+    }
+
+    // ------------------------------------------------------------ cables --
+    if (drag.kind === 'cable') {
+      const from = objectById.get(drag.fromId);
+      const last = drag.points[drag.points.length - 1];
+      const target = from ? objectAt(objects, last.x, last.y, { ignore: new Set([drag.fromId]) }) : null;
+      const drawn = drag.points.length > 1;
+
+      if (from && target) {
+        // El primer punto es el centro del objeto de origen y el último cae
+        // dentro del de destino: ninguno de los dos hace falta guardarlo,
+        // porque los extremos se recalculan a partir de los propios objetos.
+        const middle = simplifyPath(drag.points.slice(1, -1));
+        onLink(drag.fromId, target.id, middle);
+        setLinkFrom(null);
+      } else if (!drawn) {
+        // Ha sido un clic seco: se queda a la espera del segundo aparato, que
+        // es como funcionaba el cableado antes de poder dibujarlo.
+        setLinkFrom(drag.fromId);
+      } else {
+        setLinkFrom(null);
+      }
+      setDrag(null);
+      return;
+    }
+
+    // Punto de luz / punto de red: solo si ha sido un clic, no un arrastre.
+    if (drag.kind === 'feed') {
+      if (!drag.moved) onCreateFeed(tool === 'network' ? 'network' : 'power', { x: drag.x, y: drag.y });
+      setDrag(null);
+      return;
     }
 
     if (drag.kind === 'resize') {
@@ -552,6 +676,22 @@ export function Editor2D({
       className="relative size-full overflow-hidden bg-[var(--ef-canvas-2)]"
       style={{ cursor: spaceDown ? 'grab' : tool !== 'select' ? 'crosshair' : 'default' }}
       onWheel={handleWheel}
+      // Arrastrar y soltar desde el panel del almacén: el objeto cae justo
+      // donde se suelta, en vez de aparecer en el centro de la vista.
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(DROP_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setDropAt(toWorld(e.clientX, e.clientY));
+      }}
+      onDragLeave={() => setDropAt(null)}
+      onDrop={(e) => {
+        const payload = e.dataTransfer.getData(DROP_TYPE);
+        setDropAt(null);
+        if (!payload) return;
+        e.preventDefault();
+        onDropObject(payload, toWorld(e.clientX, e.clientY));
+      }}
     >
       <svg
         ref={svgRef}
@@ -681,29 +821,31 @@ export function Editor2D({
               const la = liveObject(a);
               const lb = liveObject(b);
               const isSelected = selectedConnectionId === c.id;
+              // Los extremos son SIEMPRE los objetos: al moverlos el cable los
+              // sigue sin tener que reescribir el trazo que se dibujó a mano.
+              const d = pathD(cablePath(la, lb, c.waypoints));
               return (
                 <g key={c.id}>
-                  <line
-                    x1={Number(la.x)}
-                    y1={Number(la.y)}
-                    x2={Number(lb.x)}
-                    y2={Number(lb.y)}
+                  <path
+                    d={d}
+                    fill="none"
                     stroke={c.color}
                     strokeWidth={(isSelected ? 3.5 : 2) * strokePx}
                     strokeDasharray={c.kind === 'network' ? `${strokePx * 6} ${strokePx * 4}` : undefined}
                     strokeLinecap="round"
+                    strokeLinejoin="round"
                     opacity={0.9}
                   />
                   {/* Zona de click más ancha */}
-                  <line
-                    x1={Number(la.x)}
-                    y1={Number(la.y)}
-                    x2={Number(lb.x)}
-                    y2={Number(lb.y)}
+                  <path
+                    d={d}
+                    fill="none"
                     stroke="transparent"
                     strokeWidth={10 * strokePx}
+                    strokeLinecap="round"
                     className="cursor-pointer"
                     onPointerDown={(e) => {
+                      if (tool !== 'select') return;
                       e.stopPropagation();
                       clearSelection();
                       onSelectConnection(c.id);
@@ -1006,6 +1148,52 @@ export function Editor2D({
             </g>
           ) : null}
 
+          {/* Cable en curso: se ve el recorrido y a qué aparato va a engancharse */}
+          {drag?.kind === 'cable'
+            ? (() => {
+                const from = objectById.get(drag.fromId);
+                if (!from) return null;
+                const over = drag.overId ? objectById.get(drag.overId) : null;
+                const color = tool === 'network' ? 'var(--ef-cyan)' : 'var(--ef-warn)';
+                const pts = over
+                  ? [...drag.points, { x: Number(over.x), y: Number(over.y) }]
+                  : drag.points;
+                let metros = 0;
+                for (let i = 1; i < pts.length; i++) {
+                  metros += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+                }
+                const tip = pts[pts.length - 1];
+                return (
+                  <g pointerEvents="none">
+                    <path
+                      d={pathD(pts)}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={strokePx * 2.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray={tool === 'network' ? `${strokePx * 6} ${strokePx * 4}` : undefined}
+                    />
+                    {over ? (
+                      <rect
+                        x={Number(over.x) - Number(over.length_m) / 2 - 0.08}
+                        y={Number(over.y) - Number(over.width_m) / 2 - 0.08}
+                        width={Number(over.length_m) + 0.16}
+                        height={Number(over.width_m) + 0.16}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth={strokePx * 2}
+                        transform={`rotate(${Number(over.rotation)}, ${Number(over.x)}, ${Number(over.y)})`}
+                      />
+                    ) : null}
+                    <g transform={`translate(${tip.x},${tip.y - 16 / zoom})`}>
+                      <MeasureChip zoom={zoom} rotation={0} accent text={`${fmtNum(metros, 2)} m`} />
+                    </g>
+                  </g>
+                );
+              })()
+            : null}
+
           {/* Regla */}
           {(() => {
             const m = drag?.kind === 'measure' ? drag : measurement;
@@ -1043,6 +1231,36 @@ export function Editor2D({
               </g>
             );
           })()}
+
+          {/* Dónde va a caer el objeto que se está arrastrando */}
+          {dropAt ? (
+            <g pointerEvents="none">
+              <circle
+                cx={dropAt.x}
+                cy={dropAt.y}
+                r={14 / zoom}
+                fill="color-mix(in oklab, var(--ef-accent) 22%, transparent)"
+                stroke="var(--ef-accent-soft)"
+                strokeWidth={strokePx * 1.5}
+              />
+              <line
+                x1={dropAt.x - 8 / zoom}
+                y1={dropAt.y}
+                x2={dropAt.x + 8 / zoom}
+                y2={dropAt.y}
+                stroke="var(--ef-accent-soft)"
+                strokeWidth={strokePx * 1.5}
+              />
+              <line
+                x1={dropAt.x}
+                y1={dropAt.y - 8 / zoom}
+                x2={dropAt.x}
+                y2={dropAt.y + 8 / zoom}
+                stroke="var(--ef-accent-soft)"
+                strokeWidth={strokePx * 1.5}
+              />
+            </g>
+          ) : null}
 
           {/* Selección por marco */}
           {drag?.kind === 'marquee' ? (

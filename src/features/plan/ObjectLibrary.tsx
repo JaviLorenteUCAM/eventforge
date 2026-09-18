@@ -2,16 +2,29 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, Package, Plus, Shapes, Warehouse } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Modal, SearchInput, Segmented, Select } from '@/components/ui';
-import { useCatalog, useCategories, useWarehouseItems } from '@/data/warehouse';
+import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
 import { CatalogObjectModal } from '@/features/warehouse/CatalogObjectModal';
 import { ItemFormModal } from '@/features/warehouse/ItemsTab';
-import { computeStock } from '@/lib/materials';
-import type { CatalogObject, PlanObject, WarehouseItem } from '@/lib/types';
+import { DROP_TYPE } from './Editor2D';
+import { computeStock, computeVariantStock } from '@/lib/materials';
+import type {
+  CatalogObject,
+  PlanObject,
+  StockInfo,
+  WarehouseItem,
+  WarehouseItemVariant,
+} from '@/lib/types';
 import { cn, fmtNum, normalize } from '@/lib/utils';
 
 export type AddPayload =
-  | { source: 'warehouse'; item: WarehouseItem }
+  | { source: 'warehouse'; item: WarehouseItem; variant?: WarehouseItemVariant | null }
   | { source: 'catalog'; catalog: CatalogObject }
+  | { source: 'shape'; shape: BasicShape };
+
+/** Lo que viaja en el portapapeles al arrastrar una ficha hasta el plano. */
+export type DropPayload =
+  | { source: 'warehouse'; itemId: string; variantId?: string | null }
+  | { source: 'catalog'; catalogId: string }
   | { source: 'shape'; shape: BasicShape };
 
 export type BasicShape = 'box' | 'square' | 'cylinder' | 'plane' | 'text' | 'line';
@@ -40,6 +53,7 @@ export function ObjectLibrary({
   const catalog = useCatalog();
   const categories = useCategories();
   const items = useWarehouseItems();
+  const variants = useItemVariants();
 
   const [origin, setOrigin] = useState<'warehouse' | 'event'>('warehouse');
   const [search, setSearch] = useState('');
@@ -58,6 +72,20 @@ export function ObjectLibrary({
     () => computeStock(items.data ?? [], planObjects),
     [items.data, planObjects],
   );
+
+  const variantStock = useMemo(
+    () => computeVariantStock(variants.data ?? [], planObjects),
+    [variants.data, planObjects],
+  );
+
+  /** Estilos de cada material, en el orden en que se dieron de alta. */
+  const variantsByItem = useMemo(() => {
+    const map = new Map<string, WarehouseItemVariant[]>();
+    for (const v of variants.data ?? []) {
+      map.set(v.item_id, [...(map.get(v.item_id) ?? []), v]);
+    }
+    return map;
+  }, [variants.data]);
 
   const warehouseGroups = useMemo(() => {
     const q = normalize(search);
@@ -81,15 +109,16 @@ export function ObjectLibrary({
     });
   }, [catalog.data, search, category]);
 
-  function addFromWarehouse(item: WarehouseItem) {
-    const info = stock.get(item.id);
+  function addFromWarehouse(item: WarehouseItem, variant?: WarehouseItemVariant | null) {
+    const info = variant ? variantStock.get(variant.id) : stock.get(item.id);
+    const what = variant ? `${item.name} · ${variant.name}` : item.name;
     if (info && info.available <= 0) {
       toast.warning(
-        `No quedan unidades de «${item.name}» (${fmtNum(info.total, 0)} en almacén, ${fmtNum(info.used, 0)} ya en el plano). Se coloca igualmente y aparecerá en «falta material».`,
+        `No quedan unidades de «${what}» (${fmtNum(info.total, 0)} en almacén, ${fmtNum(info.used, 0)} ya en el plano). Se coloca igualmente y aparecerá en «falta material».`,
         { duration: 6000 },
       );
     }
-    onAdd({ source: 'warehouse', item });
+    onAdd({ source: 'warehouse', item, variant: variant ?? null });
   }
 
   return (
@@ -134,45 +163,40 @@ export function ObjectLibrary({
                 onToggle={() => setCollapsed((c) => ({ ...c, [name]: !c[name] }))}
               >
                 {list.map((item) => {
-                  const info = stock.get(item.id);
-                  const available = info?.available ?? Number(item.quantity);
-                  const total = info?.total ?? Number(item.quantity);
-                  const out = available <= 0;
+                  const styles = variantsByItem.get(item.id) ?? [];
                   return (
-                    <button
-                      key={item.id}
-                      onClick={() => addFromWarehouse(item)}
-                      title={
-                        out
-                          ? 'No quedan unidades libres: se colocará igualmente y saldrá en «falta material»'
-                          : `Colocar ${item.name}`
-                      }
-                      className="group flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-line hover:bg-surface-2"
-                    >
-                      <span
-                        className="grid size-7 shrink-0 place-items-center rounded border border-line"
-                        style={{ background: `${item.color}22`, color: item.color }}
-                      >
-                        <Package className="size-3.5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] text-ink">{item.name}</span>
-                        <span className="num block truncate text-[10.5px] text-dim">
-                          {fmtNum(Number(item.length_m), 2)}×{fmtNum(Number(item.width_m), 2)}×
-                          {fmtNum(Number(item.height_m), 2)} m
-                        </span>
-                      </span>
-                      <span
-                        className={cn(
-                          'num shrink-0 rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums',
-                          out
-                            ? 'border-[color-mix(in_oklab,var(--ef-danger)_45%,transparent)] bg-[color-mix(in_oklab,var(--ef-danger)_12%,transparent)] text-danger'
-                            : 'border-line bg-surface-2 text-muted',
-                        )}
-                      >
-                        {fmtNum(available, 0)}/{fmtNum(total, 0)} {item.unit}
-                      </span>
-                    </button>
+                    <div key={item.id}>
+                      <ItemRow
+                        name={item.name}
+                        sub={`${fmtNum(Number(item.length_m), 2)}×${fmtNum(Number(item.width_m), 2)}×${fmtNum(Number(item.height_m), 2)} m`}
+                        color={item.color}
+                        unit={item.unit}
+                        info={stock.get(item.id)}
+                        fallback={Number(item.quantity)}
+                        dragPayload={{ source: 'warehouse', itemId: item.id }}
+                        onClick={() => addFromWarehouse(item)}
+                      />
+
+                      {/* Estilos: mismo objeto, distinto acabado */}
+                      {styles.length > 0 ? (
+                        <div className="mb-1 ml-4 space-y-0.5 border-l border-line pl-2">
+                          {styles.map((v) => (
+                            <ItemRow
+                              key={v.id}
+                              name={v.name}
+                              sub={v.adds_material ? 'suma material aparte' : undefined}
+                              color={v.color || item.color}
+                              unit={item.unit}
+                              info={variantStock.get(v.id)}
+                              fallback={Number(v.quantity)}
+                              dense
+                              dragPayload={{ source: 'warehouse', itemId: item.id, variantId: v.id }}
+                              onClick={() => addFromWarehouse(item, v)}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </Group>
@@ -184,22 +208,22 @@ export function ObjectLibrary({
               Figuras básicas
             </p>
             <div className="mb-4 grid grid-cols-3 gap-2">
-              <ShapeButton label="Rectángulo" onClick={() => onAdd({ source: 'shape', shape: 'box' })}>
+              <ShapeButton shape="box" onClick={() => onAdd({ source: 'shape', shape: 'box' })} label="Rectángulo">
                 <span className="block h-5 w-7 rounded-[3px] border-2 border-current" />
               </ShapeButton>
-              <ShapeButton label="Círculo" onClick={() => onAdd({ source: 'shape', shape: 'cylinder' })}>
+              <ShapeButton shape="cylinder" onClick={() => onAdd({ source: 'shape', shape: 'cylinder' })} label="Círculo">
                 <span className="block size-6 rounded-full border-2 border-current" />
               </ShapeButton>
-              <ShapeButton label="Superficie" onClick={() => onAdd({ source: 'shape', shape: 'plane' })}>
+              <ShapeButton shape="plane" onClick={() => onAdd({ source: 'shape', shape: 'plane' })} label="Superficie">
                 <span className="block h-4 w-7 rounded-[3px] border-2 border-dashed border-current" />
               </ShapeButton>
-              <ShapeButton label="Cuadrado" onClick={() => onAdd({ source: 'shape', shape: 'square' })}>
+              <ShapeButton shape="square" onClick={() => onAdd({ source: 'shape', shape: 'square' })} label="Cuadrado">
                 <span className="block size-5 rounded-[3px] border-2 border-current" />
               </ShapeButton>
-              <ShapeButton label="Línea" onClick={() => onAdd({ source: 'shape', shape: 'line' })}>
+              <ShapeButton shape="line" onClick={() => onAdd({ source: 'shape', shape: 'line' })} label="Línea">
                 <span className="block h-0.5 w-7 rounded bg-current" />
               </ShapeButton>
-              <ShapeButton label="Texto" onClick={() => onAdd({ source: 'shape', shape: 'text' })}>
+              <ShapeButton shape="text" onClick={() => onAdd({ source: 'shape', shape: 'text' })} label="Texto">
                 <span className="text-[15px] font-bold leading-none">T</span>
               </ShapeButton>
             </div>
@@ -217,6 +241,10 @@ export function ObjectLibrary({
                 {eventObjects.map((o) => (
                   <button
                     key={o.id}
+                    draggable
+                    onDragStart={(e) =>
+                      startDrag(e, { source: 'catalog', catalogId: o.id })
+                    }
                     onClick={() => onAdd({ source: 'catalog', catalog: o })}
                     className="group flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-line hover:bg-surface-2"
                   >
@@ -354,20 +382,103 @@ function ChoiceCard({
   );
 }
 
+/**
+ * Prepara el arrastre hasta el plano. El objeto no se crea aquí: solo se
+ * anuncia qué es, y el editor lo coloca justo donde se suelte.
+ */
+function startDrag(e: React.DragEvent, payload: DropPayload) {
+  e.dataTransfer.setData(DROP_TYPE, JSON.stringify(payload));
+  e.dataTransfer.effectAllowed = 'copy';
+}
+
+/** Fila del panel: se puede pulsar para colocar, o arrastrar hasta el plano. */
+function ItemRow({
+  name,
+  sub,
+  color,
+  unit,
+  info,
+  fallback,
+  dense = false,
+  dragPayload,
+  onClick,
+}: {
+  name: string;
+  sub?: string;
+  color: string;
+  unit: string;
+  info?: StockInfo;
+  fallback: number;
+  dense?: boolean;
+  dragPayload: DropPayload;
+  onClick: () => void;
+}) {
+  const available = info?.available ?? fallback;
+  const total = info?.total ?? fallback;
+  const out = available <= 0;
+
+  return (
+    <button
+      draggable
+      onDragStart={(e) => startDrag(e, dragPayload)}
+      onClick={onClick}
+      title={
+        out
+          ? 'No quedan unidades libres: se colocará igualmente y saldrá en «falta material»'
+          : `Pulsa para colocar «${name}» o arrástralo hasta el punto exacto`
+      }
+      className={cn(
+        'group flex w-full cursor-grab items-center gap-2.5 rounded-lg border border-transparent text-left transition-colors hover:border-line hover:bg-surface-2 active:cursor-grabbing',
+        dense ? 'px-1.5 py-1' : 'px-2 py-1.5',
+      )}
+    >
+      <span
+        className={cn(
+          'grid shrink-0 place-items-center rounded border border-line',
+          dense ? 'size-5' : 'size-7',
+        )}
+        style={{ background: `${color}22`, color }}
+      >
+        <Package className={dense ? 'size-3' : 'size-3.5'} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cn('block truncate text-ink', dense ? 'text-[12px]' : 'text-[12.5px]')}>
+          {name}
+        </span>
+        {sub ? <span className="num block truncate text-[10.5px] text-dim">{sub}</span> : null}
+      </span>
+      <span
+        className={cn(
+          'num shrink-0 rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums',
+          out
+            ? 'border-[color-mix(in_oklab,var(--ef-danger)_45%,transparent)] bg-[color-mix(in_oklab,var(--ef-danger)_12%,transparent)] text-danger'
+            : 'border-line bg-surface-2 text-muted',
+        )}
+      >
+        {fmtNum(available, 0)}/{fmtNum(total, 0)} {unit}
+      </span>
+    </button>
+  );
+}
+
 function ShapeButton({
   children,
   label,
+  shape,
   onClick,
 }: {
   children: React.ReactNode;
   label: string;
+  shape: BasicShape;
   onClick: () => void;
 }) {
   return (
     <button
+      draggable
+      onDragStart={(e) => startDrag(e, { source: 'shape', shape })}
       onClick={onClick}
       title={label}
-      className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-surface-2 py-2.5 text-dim transition-colors hover:border-line-strong hover:text-accent-soft"
+      className="flex cursor-grab flex-col items-center gap-1.5 rounded-xl border border-line bg-surface-2 py-2.5 text-dim transition-colors hover:border-line-strong hover:text-accent-soft active:cursor-grabbing"
     >
       {children}
       <span className="text-[10.5px]">{label}</span>

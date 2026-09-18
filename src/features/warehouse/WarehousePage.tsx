@@ -19,6 +19,7 @@ export function WarehousePage() {
     { table: 'warehouse_boxes', invalidate: [qk.warehouseBoxes] },
     { table: 'warehouse_box_items', invalidate: [qk.warehouseBoxItems] },
     { table: 'object_catalog', invalidate: [qk.catalog] },
+    { table: 'warehouse_item_variants', invalidate: [qk.itemVariants] },
   ]);
 
   return (

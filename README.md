@@ -168,6 +168,8 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 4 | `supabase/migrations/0004_functions.sql` | Duplicar evento y resumen de evento |
 | 5 | `supabase/migrations/0005_backgrounds_scenarios_textures.sql` | Imágenes de fondo calibradas, escenarios reutilizables y texturas |
 | 6 | `supabase/migrations/0006_warehouse_first.sql` | El almacén pasa a ser el origen de los objetos: forma, color, textura y electricidad en la propia ficha |
+| 7 | `supabase/migrations/0007_cable_paths_and_feeds.sql` | Cables trazados a mano y punto de red principal |
+| 8 | `supabase/migrations/0008_item_variants.sql` | Estilos del material (manteles, dibujos) con sus propias unidades |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -565,7 +567,9 @@ eventforge/
 │       ├── 0003_catalog.sql        # categorías de material, vehículos
 │       ├── 0004_functions.sql      # duplicar evento, resumen
 │       ├── 0005_backgrounds_scenarios_textures.sql
-│       └── 0006_warehouse_first.sql # el almacén pasa a ser el origen de los objetos
+│       ├── 0006_warehouse_first.sql # el almacén pasa a ser el origen de los objetos
+│       ├── 0007_cable_paths_and_feeds.sql
+│       └── 0008_item_variants.sql   # estilos del material
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -593,6 +597,7 @@ eventforge/
 │   ├── lib/                        # lógica de negocio pura (sin React)
 │   │   ├── issues.ts               # detección de incidencias eléctricas/red
 │   │   ├── materials.ts            # plano → material → almacén (existencias)
+│   │   ├── geometry.ts             # apoyos, trazado de cables, qué hay bajo un punto
 │   │   ├── textureAtlas.ts         # plantillas desplegadas y reparto de caras
 │   │   ├── storage.ts  supabase.ts  types.ts  utils.ts  env.ts
 │   ├── store/ui.ts                 # tema, menú, último evento
@@ -644,6 +649,12 @@ Vista cenital en **metros reales**. Rejilla configurable, zoom con rueda centrad
 cursor, desplazamiento con espacio o botón central, ajuste a rejilla, medidas, líneas guía,
 selección múltiple con marco, copiar/pegar, duplicar y **deshacer/rehacer**.
 
+Los objetos del panel se pueden **arrastrar hasta el punto exacto** del plano, además de
+pulsarlos para colocarlos en el centro de la vista. Y cuando algo cae encima de otra cosa
+—un PC sobre una mesa— **se apoya encima** en lugar de atravesarla: la altura se calcula
+sola. Si a un objeto le has puesto una altura a mano (un foco a 2 m de la pared), moverlo no
+te la cambia.
+
 Figuras básicas: rectángulo, cuadrado, círculo, superficie, línea y texto, además del
 material del almacén y de los objetos propios del evento.
 
@@ -655,6 +666,9 @@ barra las muestra para todos a la vez.
 **En móvil** el plano ocupa toda la pantalla: un dedo lo desplaza, dos dedos hacen zoom, y la
 biblioteca, el inspector y el resto de opciones se abren como hoja inferior cuando hacen
 falta.
+
+En **3D** el botón izquierdo queda libre para seleccionar y arrastrar objetos; la cámara se
+gira con el **botón derecho** y la vista se desplaza con la **rueda pulsada**.
 
 Los objetos son entidades reales de la base de datos: se seleccionan, mueven, rotan (tirador
 dedicado, con ajuste a 15°), redimensionan (tirador de esquina), duplican, bloquean y
@@ -750,7 +764,20 @@ Al crear un objeto nuevo desde el editor se pregunta dónde guardarlo, porque es
 entre llevar existencias o no.
 
 ### Cableado, redes y conexiones
-Herramientas de cable **eléctrico** y de **red**: clic en el origen, clic en el destino. La
+Herramientas de cable **eléctrico** y de **red**. Se **dibuja**: mantienes pulsado sobre el
+aparato de origen y llevas el cable hasta el de destino por donde quieras. No tiene que ser
+una recta —puede bordear la pared, rodear el escenario o serpentear—, y esos metros cuentan
+en el listado de material. También sigue valiendo el modo antiguo: clic en el origen, clic en
+el destino, y sale recto.
+
+Con una de las dos herramientas activas, un **clic en el suelo** coloca la acometida:
+
+- **Punto de luz** — de donde sale la corriente. Lo que no llegue hasta uno por cable aparece
+  como *Sin electricidad*.
+- **Punto de red principal** — la roseta que trae Internet. Puedes colgarle un router, un
+  switch o directamente un PC.
+
+La
 longitud se estima por la distancia **real en el espacio** —planta y desnivel, tomando el
 centro de cada objeto según su altura sobre el suelo— más un 20 % de holgura, y se puede
 corregir a mano. Cada cable guarda tipo, longitud, color, origen y destino, y **suma metros al listado
@@ -790,6 +817,26 @@ con cuántas unidades necesitas, cuántas tienes y cuántas te faltan. Exportabl
 
 El cruce se hace por ficha de almacén asignada → por objeto de biblioteca → por nombre
 normalizado.
+
+### Estilos del material
+Cinco photocalls, pero cada uno con su dibujo. Siete mesas iguales, seis con mantel negro y
+una con mantel rojo. Un material del almacén puede tener varios **estilos**, y cada estilo
+lleva:
+
+- **sus propias unidades** — cuántas hay de ese acabado en concreto;
+- **su imagen y su color** — lo que se ve en el plano, en 2D y en 3D;
+- si **cuenta como material aparte**.
+
+Esa última casilla es la diferencia entre los dos ejemplos. El dibujo del photocall no es un
+bulto más: sigue siendo un photocall. El mantel sí hay que cargarlo, así que si pones tres
+mesas, dos con mantel negro y una con rojo, el listado del evento pide **3 mesas, 2 manteles
+negros y 1 mantel rojo**.
+
+En el panel del editor cada estilo aparece bajo su material con sus existencias
+(`2/6 uds`), de modo que los colocas por separado y sabes cuántos te quedan. El estilo de un
+objeto ya colocado se cambia desde el inspector.
+
+Los estilos se dan de alta dentro del material, en **Almacén → Material → Editar**.
 
 ### Almacén, cajas y categorías
 Inventario global con búsqueda, filtros, ordenación, foto remota, ubicación y código interno.

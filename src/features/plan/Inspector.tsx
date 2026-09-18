@@ -10,6 +10,7 @@ import {
   NumberInput,
   Select,
 } from '@/components/ui';
+import { useItemVariants, useWarehouseItems } from '@/data/warehouse';
 import type { Plan, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
 import { OBJECT_KINDS, OBJECT_KIND_LABEL, type ObjectKind } from '@/lib/types';
 import { cn, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
@@ -150,6 +151,8 @@ function ObjectInspector({
               </div>
             </div>
           ) : null}
+
+          <VariantPicker object={object} onPick={set} />
 
           <Field label="Tipo">
             <Select
@@ -371,6 +374,59 @@ function ObjectInspector({
   );
 }
 
+/**
+ * ESTILO DEL OBJETO
+ *
+ * Cuál de los acabados del material es este en concreto: el photocall de este
+ * año, la mesa con mantel rojo. Cambiarlo aquí cambia también el color, el
+ * nombre y —si el estilo suma material aparte— lo que pide el listado.
+ */
+function VariantPicker({
+  object,
+  onPick,
+}: {
+  object: PlanObject;
+  onPick: (patch: Partial<PlanObject>, name?: string) => void;
+}) {
+  const variants = useItemVariants();
+  const items = useWarehouseItems();
+
+  if (!object.warehouse_item_id) return null;
+
+  const item = items.data?.find((i) => i.id === object.warehouse_item_id);
+  const list = (variants.data ?? []).filter((v) => v.item_id === object.warehouse_item_id);
+  if (list.length === 0) return null;
+
+  return (
+    <Field label="Estilo" hint="Los estilos se dan de alta en el almacén, dentro del material.">
+      <Select
+        value={object.variant_id ?? ''}
+        className="h-9"
+        onChange={(e) => {
+          const id = e.target.value || null;
+          const v = id ? list.find((x) => x.id === id) : null;
+          onPick(
+            {
+              variant_id: id,
+              label: v && item ? `${item.name} · ${v.name}` : (item?.name ?? object.label),
+              color: v?.color || item?.color || object.color,
+            },
+            'Cambiar estilo',
+          );
+        }}
+      >
+        <option value="">Sin estilo</option>
+        {list.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.name}
+            {v.adds_material ? ' · suma material' : ''}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
 function MultiInspector({
   count,
   objects,
@@ -531,13 +587,15 @@ function PlanInspector({ plan, onChange }: { plan: Plan; onChange: (patch: Parti
         </Field>
       </Section>
 
-      <Section title="Atajos de teclado">
+      <Section title="Atajos y ratón">
         <ul className="space-y-1 text-[11.5px] text-muted">
           <Shortcut keys="Clic" action="Seleccionar" />
           <Shortcut keys="Mayús + clic" action="Añadir a la selección" />
           <Shortcut keys="Arrastrar" action="Mover / marco de selección" />
           <Shortcut keys="Espacio + arrastrar" action="Desplazar la vista" />
           <Shortcut keys="Rueda" action="Zoom" />
+          <Shortcut keys="3D · botón derecho" action="Girar la cámara" />
+          <Shortcut keys="3D · rueda pulsada" action="Desplazar la vista" />
           <Shortcut keys="Ctrl + D" action="Duplicar" />
           <Shortcut keys="Ctrl + C / V" action="Copiar / pegar" />
           <Shortcut keys="Ctrl + Z / Y" action="Deshacer / rehacer" />
