@@ -385,6 +385,42 @@ await mustFail(
   `update public.plan_connections set waypoints = '{"x":1}'::jsonb where cable_type = 'Manguera 3G1.5'`,
 );
 
+// Estilos del material: el caso de las mesas con mantel.
+await db.exec(`
+  insert into public.warehouse_item_variants (id, item_id, name, quantity, adds_material, material_name)
+  values ('33333333-3333-4333-8333-333333333333', '${itemId}', 'Mantel negro', 6, true, 'Mantel negro'),
+         ('44444444-4444-4444-8444-444444444444', '${itemId}', 'Mantel rojo',  1, true, 'Mantel rojo')
+`);
+await db.exec(`
+  insert into public.plan_objects (plan_id, warehouse_item_id, variant_id, label, length_m, width_m, height_m)
+  values ('${planId}', '${itemId}', '33333333-3333-4333-8333-333333333333', 'Mesa negra 1', 2, 0.8, 0.75),
+         ('${planId}', '${itemId}', '33333333-3333-4333-8333-333333333333', 'Mesa negra 2', 2, 0.8, 0.75),
+         ('${planId}', '${itemId}', '44444444-4444-4444-8444-444444444444', 'Mesa roja',    2, 0.8, 0.75)
+`);
+const porEstilo = await db.query(`
+  select v.name, count(o.id)::int as puestas, v.quantity::int as hay
+    from public.warehouse_item_variants v
+    left join public.plan_objects o on o.variant_id = v.id
+   where v.item_id = '${itemId}'
+   group by v.id, v.name, v.quantity
+   order by v.name
+`);
+const negro = porEstilo.rows.find((r) => r.name === 'Mantel negro');
+const rojo = porEstilo.rows.find((r) => r.name === 'Mantel rojo');
+console.log(
+  `  estilos → ${porEstilo.rows.map((r) => `${r.name}: ${r.puestas}/${r.hay}`).join(' · ')}`,
+);
+console.log(
+  negro?.puestas === 2 && negro?.hay === 6 && rojo?.puestas === 1 && rojo?.hay === 1
+    ? '  \x1b[32m✓\x1b[0m Cada estilo cuenta sus unidades por separado'
+    : '  \x1b[31m✗\x1b[0m El recuento por estilo no cuadra',
+);
+
+await mustFail(
+  'Dos estilos del mismo material no pueden llamarse igual',
+  `insert into public.warehouse_item_variants (item_id, name) values ('${itemId}', 'Mantel rojo')`,
+);
+
 await mustFail(
   'Un modo de textura inválido se rechaza',
   `update public.warehouse_items set texture_mode='inventado' where id='${itemId}'`,
