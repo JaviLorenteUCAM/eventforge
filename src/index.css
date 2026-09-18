@@ -1,0 +1,244 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   EventForge · Sistema de diseño
+   ---------------------------------------------------------------------------
+   Tokens semanticos en CSS variables -> expuestos a Tailwind con @theme.
+   Modo oscuro por defecto; el claro se activa con <html data-theme="light">.
+   =========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  --ef-canvas: #070a12;
+  --ef-canvas-2: #0b1020;
+  --ef-surface: rgba(255, 255, 255, 0.035);
+  --ef-surface-2: rgba(255, 255, 255, 0.06);
+  --ef-surface-solid: #101627;
+  --ef-line: rgba(255, 255, 255, 0.09);
+  --ef-line-strong: rgba(255, 255, 255, 0.16);
+
+  --ef-text: #e8ecf6;
+  --ef-muted: #97a1bb;
+  --ef-dim: #6b7694;
+
+  --ef-accent: #6366f1;
+  --ef-accent-soft: #818cf8;
+  --ef-accent-ink: #ffffff;
+  --ef-cyan: #22d3ee;
+
+  --ef-ok: #34d399;
+  --ef-warn: #fbbf24;
+  --ef-danger: #f87171;
+
+  --ef-grid: rgba(255, 255, 255, 0.055);
+  --ef-grid-strong: rgba(255, 255, 255, 0.13);
+  --ef-shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.85);
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+
+  --ef-canvas: #f1f4fa;
+  --ef-canvas-2: #e6ebf5;
+  --ef-surface: rgba(255, 255, 255, 0.75);
+  --ef-surface-2: rgba(255, 255, 255, 0.95);
+  --ef-surface-solid: #ffffff;
+  --ef-line: rgba(15, 23, 42, 0.1);
+  --ef-line-strong: rgba(15, 23, 42, 0.2);
+
+  --ef-text: #131a2c;
+  --ef-muted: #4a5670;
+  --ef-dim: #6b7694;
+
+  --ef-accent: #4f46e5;
+  --ef-accent-soft: #6366f1;
+  --ef-accent-ink: #ffffff;
+
+  --ef-grid: rgba(15, 23, 42, 0.07);
+  --ef-grid-strong: rgba(15, 23, 42, 0.16);
+  --ef-shadow: 0 18px 44px -24px rgba(15, 23, 42, 0.45);
+}
+
+@theme inline {
+  --color-canvas: var(--ef-canvas);
+  --color-canvas-2: var(--ef-canvas-2);
+  --color-surface: var(--ef-surface);
+  --color-surface-2: var(--ef-surface-2);
+  --color-surface-solid: var(--ef-surface-solid);
+  --color-line: var(--ef-line);
+  --color-line-strong: var(--ef-line-strong);
+  --color-ink: var(--ef-text);
+  --color-muted: var(--ef-muted);
+  --color-dim: var(--ef-dim);
+  --color-accent: var(--ef-accent);
+  --color-accent-soft: var(--ef-accent-soft);
+  --color-accent-ink: var(--ef-accent-ink);
+  --color-ok: var(--ef-ok);
+  --color-warn: var(--ef-warn);
+  --color-danger: var(--ef-danger);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --radius-xl2: 1.25rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--ef-line);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--ef-canvas);
+    color: var(--ef-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  /* Halo ambiental: se pinta una sola vez, sin coste por frame. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 520px at 12% -8%, color-mix(in oklab, var(--ef-accent) 26%, transparent), transparent 70%),
+      radial-gradient(760px 480px at 92% 0%, color-mix(in oklab, var(--ef-cyan) 16%, transparent), transparent 68%),
+      linear-gradient(180deg, var(--ef-canvas-2), var(--ef-canvas) 55%);
+    opacity: 0.85;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--ef-accent) 45%, transparent);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--ef-line-strong);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--ef-accent) 55%, var(--ef-line-strong));
+    background-clip: padding-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ef-accent-soft);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator,
+  input[type='datetime-local']::-webkit-calendar-picker-indicator {
+    filter: invert(0.75);
+    cursor: pointer;
+  }
+  html[data-theme='light'] input[type='date']::-webkit-calendar-picker-indicator,
+  html[data-theme='light'] input[type='time']::-webkit-calendar-picker-indicator,
+  html[data-theme='light'] input[type='datetime-local']::-webkit-calendar-picker-indicator {
+    filter: none;
+  }
+}
+
+@layer components {
+  .glass {
+    background: var(--ef-surface);
+    border: 1px solid var(--ef-line);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  .card {
+    background: var(--ef-surface);
+    border: 1px solid var(--ef-line);
+    border-radius: 1rem;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: var(--ef-shadow);
+  }
+
+  .panel {
+    background: var(--ef-surface);
+    border: 1px solid var(--ef-line);
+  }
+
+  .hairline {
+    border-color: var(--ef-line);
+  }
+
+  /* Barra de progreso con brillo sutil */
+  .meter {
+    position: relative;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--ef-text) 10%, transparent);
+  }
+  .meter > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .grab {
+    cursor: grab;
+  }
+  .grabbing {
+    cursor: grabbing;
+  }
+}
+
+/* Respeta la preferencia de movimiento reducido en toda la app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

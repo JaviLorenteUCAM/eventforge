@@ -1,0 +1,8 @@
+# Configuracion para el CLI de Supabase (opcional: solo si usas `supabase` CLI).
+# El proyecto tambien puede configurarse 100% desde el panel web.
+project_id = "eventforge"
+
+[functions.access]
+# La funcion "access" se llama SIN sesion (es la puerta de entrada),
+# por eso no puede exigir un JWT valido. La proteccion es el ACCESS_CODE.
+verify_jwt = false
