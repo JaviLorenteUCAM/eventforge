@@ -686,10 +686,13 @@ En **3D** el botón izquierdo queda libre para seleccionar y arrastrar objetos; 
 gira con el **botón derecho** y la vista se desplaza con la **rueda pulsada**. La rueda solo
 mueve la vista: nunca selecciona ni arrastra nada.
 
-**La rueda avanza**, no orbita: la cámara y su punto de mira se mueven juntos hacia donde
-estás mirando, con un paso proporcional a lo lejos que estés —rápido cuando ves toda la nave,
-fino cuando estás encima de algo— y frenando justo antes de atravesar el suelo. Así se puede
-llegar a mirar de cerca una alfombra de dos centímetros.
+**La rueda avanza hacia donde apunta el ratón**, no orbita. El paso depende de lo que haya
+bajo el cursor: si apuntas a la pared del fondo avanza metros, si apuntas a una regleta a medio
+metro avanza centímetros. Nunca traspasa aquello a lo que apuntas ni atraviesa el suelo, así
+que se puede llegar a mirar de cerca una alfombra de dos centímetros.
+
+Además el punto de giro se planta en esa superficie, de modo que al rotar la cámara orbitas
+alrededor de lo que estás mirando y no de un punto perdido a lo lejos.
 
 Para plantarse delante de algo de golpe, **doble clic** sobre el objeto (o **F** con él
 seleccionado): la cámara se coloca a una distancia acorde a su tamaño.

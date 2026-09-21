@@ -210,11 +210,20 @@ La rueda NO usa el zoom de OrbitControls. Ese zoom acorta el radio alrededor del
 mira, así que en una sala de 90 metros giras la rueda y sigues dando vueltas al mismo sitio:
 nunca llegas a la alfombra del rincón.
 
-En su lugar hay un manejador propio (`Editor3D.tsx`) que mueve **cámara y punto de mira
-juntos** en la dirección de la vista, con un paso de `max(0.04, radio · 0.2)` metros y un tope
-contra el suelo. Se engancha en el elemento PADRE del lienzo y en fase de captura, para llegar
-antes que el manejador de OrbitControls sin tener que desactivar su zoom (que en táctil sigue
-haciendo falta para el pellizco).
+En su lugar hay un manejador propio (`Editor3D.tsx`) que lanza un rayo por el cursor, mira qué
+malla hay debajo y usa esa PROFUNDIDAD para todo:
+
+- el paso es el 12 % de ella por muesca, así que se adapta solo (metros contra la pared del
+  fondo, centímetros sobre una regleta) y nunca traspasa lo que se apunta;
+- el pivote se coloca sobre esa superficie, en el eje de la cámara, para que al rotar se orbite
+  alrededor de lo que se mira. En el eje y no en el punto exacto del cursor: el `lookAt` de
+  OrbitControls giraría la vista de golpe.
+
+Un paso proporcional al radio no vale: como el pivote viaja con la cámara, el radio no cambia
+al avanzar y el paso se queda igual de grande cerca que lejos.
+
+Se engancha en el elemento PADRE del lienzo y en fase de captura, para llegar antes que el
+manejador de OrbitControls sin desactivar su zoom (que en táctil hace falta para el pellizco).
 
 El suelo se dibuja 1 cm por debajo del cero y la rejilla a 5 mm. Con todo a la misma altura,
 la cara inferior de un objeto apoyado competía con el suelo por el mismo píxel y parpadeaba;

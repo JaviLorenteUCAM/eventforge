@@ -174,16 +174,19 @@ function Scene({
   /**
    * ZOOM CON LA RUEDA
    *
-   * OrbitControls no acerca: acorta el radio alrededor del punto de mira. En
-   * una sala de 90 metros eso significa que por mucho que gires la rueda te
-   * quedas dando vueltas al mismo sitio y nunca llegas a la alfombra que hay
-   * en un rincón.
+   * OrbitControls no acerca: acorta el radio alrededor del punto de mira, así
+   * que en una sala de 90 metros giras la rueda y sigues dando vueltas al
+   * mismo sitio sin llegar nunca a la alfombra del rincón.
    *
-   * Aquí la rueda hace lo que se espera: AVANZAR. La cámara y su punto de mira
-   * se mueven juntos en la dirección en la que se está mirando, con un paso
-   * proporcional a lo lejos que se esté —grande cuando ves toda la nave, fino
-   * cuando estás encima de un objeto— y frenando justo antes de atravesar el
-   * suelo.
+   * Aquí la rueda avanza hacia DONDE APUNTA EL RATÓN, y con un paso que
+   * depende de lo que haya debajo:
+   *
+   *   · si apuntas a la pared del fondo, el paso es de metros;
+   *   · si apuntas a una regleta a medio metro, el paso es de centímetros.
+   *
+   * Además el punto de mira se planta en esa superficie, de modo que al girar
+   * la cámara se orbita alrededor de lo que estás mirando y no de un punto
+   * perdido a lo lejos.
    *
    * Se engancha en el elemento PADRE del lienzo y en fase de captura, para
    * llegar antes que el manejador propio de OrbitControls.
@@ -193,6 +196,12 @@ function Scene({
     if (!host) return;
 
     const SUELO = 0.06; // altura mínima de la cámara sobre el suelo
+    const MARGEN = 0.15; // no llegar a tocar aquello a lo que se apunta
+    const raycaster = new THREE.Raycaster();
+    // Las rejillas y los cables son líneas: no se tienen en cuenta.
+    raycaster.params.Line = { threshold: 0 };
+    const ndc = new THREE.Vector2();
+    const viewDir = new THREE.Vector3();
 
     const onWheel = (e: WheelEvent) => {
       const controls = controlsRef.current;
@@ -201,14 +210,37 @@ function Scene({
       e.preventDefault();
       e.stopPropagation();
 
-      const dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
+      const rect = gl.domElement.getBoundingClientRect();
+      ndc.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      camera.getWorldDirection(viewDir);
 
-      // El paso crece con la distancia: así se avanza rápido de lejos y se
-      // afina de cerca, sin topes ni saltos.
-      const radius = camera.position.distanceTo(controls.target);
-      const step = Math.max(0.04, radius * 0.2) * (e.deltaY > 0 ? -1 : 1);
-      const delta = dir.multiplyScalar(step);
+      // Qué hay bajo el cursor. Solo mallas: el suelo cuenta, las líneas no.
+      const hit = raycaster
+        .intersectObjects(scene.children, true)
+        .find((h) => h.object.type === 'Mesh' && h.distance > 0.02);
+
+      const toHit = hit
+        ? new THREE.Vector3().subVectors(hit.point, camera.position)
+        : viewDir.clone().multiplyScalar(camera.position.distanceTo(controls.target));
+
+      // Profundidad medida sobre el eje de la cámara: es la que manda para el
+      // paso y para dónde se coloca el pivote.
+      const depth = Math.max(0.2, toHit.dot(viewDir));
+
+      // Los ratones mandan 100 por muesca y los paneles táctiles muchos
+      // eventos pequeños: se escala con eso para que ambos vayan igual de
+      // finos.
+      const notches = Math.min(3, Math.max(0.15, Math.abs(e.deltaY) / 100));
+      const forward = e.deltaY < 0;
+      let step = depth * 0.12 * notches * (forward ? 1 : -1);
+      // Acercándose, nunca traspasar lo que se está mirando.
+      if (forward) step = Math.min(step, Math.max(0, depth - MARGEN));
+
+      const delta = (hit ? toHit.clone().normalize() : viewDir.clone()).multiplyScalar(step);
 
       // Frenar contra el suelo en lugar de atravesarlo.
       if (delta.y < 0 && camera.position.y + delta.y < SUELO) {
@@ -218,15 +250,18 @@ function Scene({
       }
 
       camera.position.add(delta);
-      // El punto de mira viaja con la cámara: se sigue orbitando alrededor de
-      // lo que se tiene delante, no del centro de la sala.
-      controls.target.add(delta);
+
+      // El pivote, sobre la superficie que se está mirando y SIEMPRE en el eje
+      // de la cámara: si se pusiera en el punto exacto del cursor, el
+      // `lookAt` de OrbitControls giraría la vista de golpe.
+      const newDepth = Math.max(0.25, depth - step);
+      controls.target.copy(camera.position).addScaledVector(viewDir, newDepth);
       controls.update();
     };
 
     host.addEventListener('wheel', onWheel, { capture: true, passive: false });
     return () => host.removeEventListener('wheel', onWheel, { capture: true });
-  }, [gl, camera]);
+  }, [gl, camera, scene]);
 
   // Tecla F: enfocar lo seleccionado, como en cualquier editor 3D.
   useEffect(() => {
