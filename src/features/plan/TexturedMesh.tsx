@@ -21,6 +21,48 @@ export interface TextureSpec {
    * con sus caras y los colores saldrían desplazados.
    */
   atlas: { length: number; width: number; height: number };
+  /**
+   * Color que se recorta de la imagen, en hexadecimal. Sirve para dejar huecos
+   * de verdad —el centro vacío de un soporte de televisión— sin necesidad de un
+   * PNG con transparencia: se pinta el hueco de un color que no se use en el
+   * resto del dibujo y se marca aquí.
+   */
+  keyColor?: string | null;
+  /** Cuánto se parecen los píxeles que también se recortan: 0 exacto, 1 todo. */
+  keyTolerance?: number;
+}
+
+/**
+ * Recorta de la imagen todo lo que se parezca al color indicado.
+ *
+ * Se compara en RGB con una distancia euclídea normalizada: hace falta margen
+ * porque el color se ensucia al guardar en JPEG o al reescalar, y un recorte
+ * exacto dejaría un halo de píxeles sueltos por los bordes.
+ */
+function keyOutColor(image: CanvasImageSource & { width: number; height: number }, hex: string, tolerance: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.drawImage(image, 0, 0);
+
+  const key = new THREE.Color(hex);
+  const kr = key.r * 255;
+  const kg = key.g * 255;
+  const kb = key.b * 255;
+  // 441.67 = distancia máxima posible en RGB (raíz de 3 × 255²).
+  const limit = Math.max(0, Math.min(1, tolerance)) * 441.673;
+
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const d = Math.hypot(px[i] - kr, px[i + 1] - kg, px[i + 2] - kb);
+    if (d <= limit) px[i + 3] = 0;
+  }
+  ctx.putImageData(data, 0, 0);
+  return canvas;
 }
 
 /**
@@ -30,7 +72,11 @@ export interface TextureSpec {
  * FIRMADAS y cambian: la caché de useLoader guardaría la URL caducada y con
  * Suspense un fallo de red tumbaría toda la escena.
  */
-function useImageTexture(url: string | undefined): THREE.Texture | null {
+function useImageTexture(
+  url: string | undefined,
+  keyColor?: string | null,
+  keyTolerance = 0.12,
+): THREE.Texture | null {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
   useEffect(() => {
@@ -48,6 +94,23 @@ function useImageTexture(url: string | undefined): THREE.Texture | null {
           t.dispose();
           return;
         }
+
+        // Con color clave, la imagen pasa por un lienzo donde se le quita el
+        // alfa a lo que se le parezca. Sin él se usa tal cual: si el PNG ya
+        // trae transparencia, el recorte por alfa del material hace el resto.
+        if (keyColor) {
+          const img = t.image as (CanvasImageSource & { width: number; height: number }) | undefined;
+          const cut = img?.width ? keyOutColor(img, keyColor, keyTolerance) : null;
+          if (cut) {
+            const canvasTexture = new THREE.CanvasTexture(cut);
+            canvasTexture.colorSpace = THREE.SRGBColorSpace;
+            canvasTexture.anisotropy = 4;
+            t.dispose();
+            setTexture(canvasTexture);
+            return;
+          }
+        }
+
         t.colorSpace = THREE.SRGBColorSpace;
         t.anisotropy = 4;
         setTexture(t);
@@ -62,7 +125,7 @@ function useImageTexture(url: string | undefined): THREE.Texture | null {
     return () => {
       alive = false;
     };
-  }, [url]);
+  }, [url, keyColor, keyTolerance]);
 
   useEffect(() => () => texture?.dispose(), [texture]);
 
@@ -113,7 +176,7 @@ export function TexturedMesh({
   opacity = 1,
   ...meshProps
 }: Props) {
-  const map = useImageTexture(texture?.url);
+  const map = useImageTexture(texture?.url, texture?.keyColor, texture?.keyTolerance);
   const isBox = shape !== 'cylinder';
 
   const materials = useMemo(() => {
@@ -124,6 +187,12 @@ export function TexturedMesh({
       emissiveIntensity,
       transparent,
       opacity,
+      // Los píxeles sin alfa desaparecen del todo. Se usa alphaTest y no
+      // `transparent` a secas porque así no hay que ordenar nada por
+      // profundidad: el hueco es hueco, con borde limpio, y el objeto se sigue
+      // comportando como opaco.
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
     };
 
     if (!map || !texture) {

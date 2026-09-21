@@ -172,6 +172,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 8 | `supabase/migrations/0008_item_variants.sql` | Estilos del material (manteles, dibujos) con sus propias unidades |
 | 9 | `supabase/migrations/0009_signal_cabling.sql` | Cableado de señal (HDMI, DisplayPort, USB-C) |
 | 10 | `supabase/migrations/0010_object_angles.sql` | Girar los objetos en los tres ejes |
+| 11 | `supabase/migrations/0011_texture_transparency.sql` | Color transparente en las texturas |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -573,7 +574,8 @@ eventforge/
 │       ├── 0007_cable_paths_and_feeds.sql
 │       ├── 0008_item_variants.sql   # estilos del material
 │       ├── 0009_signal_cabling.sql  # cableado de señal
-│       └── 0010_object_angles.sql   # giro en los tres ejes
+│       ├── 0010_object_angles.sql   # giro en los tres ejes
+│       └── 0011_texture_transparency.sql
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -737,6 +739,21 @@ Hay dos modos de aplicarla:
 
 En los cilindros la plantilla es la superficie lateral desenrollada (perímetro × alto), porque
 las tapas no se pueden desplegar en la misma imagen sin deformarlas.
+
+#### Huecos: partes que no existen
+
+Un soporte de televisión son dos patas y el centro vacío, pero la textura se pinta sobre una
+caja. Para que el hueco sea hueco de verdad hay dos caminos:
+
+- **Un PNG con transparencia.** Lo que esté borrado se ve hueco. No hay que tocar nada más.
+- **Marcar un color como transparente.** Pintas el hueco de un color que no uses en el resto
+  del dibujo —el magenta de toda la vida— y lo eliges en *Color transparente*. Es la vía si
+  editas con Paint o con cualquier programa que no guarde transparencia. Hay **cuentagotas**:
+  pulsas *Elegir color de la imagen* y luego el propio hueco, sin saberte el hexadecimal.
+
+El **margen** controla cuánto se parecen los píxeles que también caen. Súbelo si quedan restos
+de color por los bordes (pasa al guardar en JPEG o al reescalar) y bájalo si se está comiendo
+parte del dibujo.
 
 ### Orientación: girar un objeto en los tres ejes
 

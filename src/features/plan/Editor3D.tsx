@@ -68,7 +68,8 @@ export function Editor3D(props: Props) {
         shadows
         dpr={[1, 1.75]}
         gl={{ preserveDrawingBuffer: true, antialias: true }}
-        camera={{ position: camera, fov: 45, near: 0.1, far: 500 }}
+        // near bajo para poder pegarse a un objeto sin que se recorte.
+        camera={{ position: camera, fov: 45, near: 0.02, far: 500 }}
       >
         <color attach="background" args={["#070a12"]} />
         <fog
@@ -451,8 +452,12 @@ function Scene({
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={Math.PI / 2.05}
-        minDistance={1.5}
+        // 1,5 m era demasiado para mirar de cerca un soporte o una regleta.
+        minDistance={0.2}
         maxDistance={Math.max(W, D) * 4}
+        // La rueda acerca hacia donde apunta el ratón, como en el plano 2D, en
+        // vez de hacia el centro de la órbita.
+        zoomToCursor
         mouseButtons={{
           LEFT: undefined as unknown as THREE.MOUSE,
           MIDDLE: THREE.MOUSE.PAN,

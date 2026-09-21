@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Grid2x2, ImageIcon, Trash2, Upload } from 'lucide-react';
+import { Grid2x2, ImageIcon, Pipette, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button, Field, NumberInput, Select } from '@/components/ui';
+import { Button, ColorPicker, Field, NumberInput, Select } from '@/components/ui';
 import { BUCKETS, removeFile, resolveUrl, uploadFile } from '@/lib/storage';
 import { generateBoxTemplate, generateCylinderTemplate } from '@/lib/textureAtlas';
-import { downloadBlob, fmtNum, slugify } from '@/lib/utils';
+import { cn, downloadBlob, fmtNum, slugify } from '@/lib/utils';
 import type { TextureMode } from '@/lib/types';
 
 export interface TextureFields {
@@ -13,6 +13,154 @@ export interface TextureFields {
   texture_offset_x: number;
   texture_offset_y: number;
   texture_rotation: number;
+  texture_key_color: string | null;
+  texture_key_tolerance: number;
+}
+
+/**
+ * COLOR TRANSPARENTE
+ *
+ * Un soporte de televisión son dos patas y el centro hueco, pero la textura se
+ * pinta sobre una caja. Para que el hueco sea hueco hay dos caminos:
+ *
+ *   · subir un PNG con transparencia, y ya está;
+ *   · pintar el hueco de un color que no se use en el resto del dibujo y
+ *     marcarlo aquí. Es la vía para quien edita con Paint.
+ *
+ * El cuentagotas evita tener que saberse el hexadecimal: se pulsa sobre la
+ * propia imagen y se toma el color de ese píxel.
+ */
+function CutoutControls({
+  url,
+  keyColor,
+  keyTolerance,
+  onChange,
+}: {
+  url: string | null;
+  keyColor: string | null;
+  keyTolerance: number;
+  onChange: (patch: Partial<TextureFields>) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+
+  function pickFromImage(e: React.MouseEvent<HTMLImageElement>) {
+    if (!picking) return;
+    const img = e.currentTarget;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+
+    // La imagen se muestra con object-contain: hay que deshacer el encaje para
+    // saber a qué píxel del original corresponde el clic.
+    const box = img.getBoundingClientRect();
+    const scale = Math.min(box.width / img.naturalWidth, box.height / img.naturalHeight);
+    const drawnW = img.naturalWidth * scale;
+    const drawnH = img.naturalHeight * scale;
+    const x = (e.clientX - box.left - (box.width - drawnW) / 2) / scale;
+    const y = (e.clientY - box.top - (box.height - drawnH) / 2) / scale;
+    if (x < 0 || y < 0 || x >= img.naturalWidth || y >= img.naturalHeight) return;
+
+    try {
+      const [r, g, b] = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+      const hex =
+        '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+      onChange({ texture_key_color: hex });
+      setPicking(false);
+      toast.success(`Color ${hex} marcado como transparente`);
+    } catch {
+      toast.error('No se ha podido leer el color de la imagen.');
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-line bg-surface p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[12px] font-medium text-ink">Color transparente</p>
+        {keyColor ? (
+          <button
+            type="button"
+            onClick={() => onChange({ texture_key_color: null })}
+            className="text-[11.5px] text-accent-soft hover:underline"
+          >
+            Quitar recorte
+          </button>
+        ) : null}
+      </div>
+
+      <p className="mt-1 text-[11.5px] leading-relaxed text-dim">
+        Para dejar huecos de verdad: el centro vacío de un soporte de televisión, el interior
+        de un aro. Si tu PNG ya lleva transparencia no hace falta tocar nada, se respeta sola.
+      </p>
+
+      {url ? (
+        <div className="mt-2.5">
+          <div
+            className={cn(
+              'relative h-28 overflow-hidden rounded-lg border bg-[repeating-conic-gradient(#334155_0%_25%,#1e293b_0%_50%)] bg-[length:16px_16px]',
+              picking ? 'border-accent-soft ring-2 ring-accent-soft' : 'border-line',
+            )}
+          >
+            <img
+              src={url}
+              alt="Textura"
+              onClick={pickFromImage}
+              className={cn('size-full object-contain', picking && 'cursor-crosshair')}
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={picking ? 'primary' : 'outline'}
+            className="mt-2"
+            icon={<Pipette className="size-3.5" />}
+            onClick={() => setPicking((v) => !v)}
+          >
+            {picking ? 'Pulsa el color en la imagen' : 'Elegir color de la imagen'}
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <span
+          className="size-6 shrink-0 rounded-md border border-line-strong"
+          style={{
+            background: keyColor ?? 'transparent',
+            backgroundImage: keyColor
+              ? undefined
+              : 'repeating-conic-gradient(#334155 0% 25%, #1e293b 0% 50%)',
+            backgroundSize: keyColor ? undefined : '10px 10px',
+          }}
+        />
+        <span className="num text-[11.5px] text-muted">{keyColor ?? 'sin recorte'}</span>
+      </div>
+
+      <div className="mt-2">
+        <ColorPicker
+          value={keyColor ?? '#ff00ff'}
+          onChange={(c) => onChange({ texture_key_color: c })}
+        />
+      </div>
+
+      {keyColor ? (
+        <Field
+          className="mt-2.5"
+          label="Margen"
+          hint="Súbelo si quedan restos del color por los bordes; bájalo si se come el dibujo."
+        >
+          <NumberInput
+            value={keyTolerance}
+            onChange={(v) => onChange({ texture_key_tolerance: Math.max(0, Math.min(1, v)) })}
+            step={0.02}
+            min={0}
+            max={1}
+          />
+        </Field>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -39,6 +187,8 @@ export function TextureSection({
   offsetX,
   offsetY,
   rotation,
+  keyColor,
+  keyTolerance,
   folder = 'objetos',
   compact = false,
   onPathChange,
@@ -55,6 +205,8 @@ export function TextureSection({
   offsetX: number;
   offsetY: number;
   rotation: number;
+  keyColor: string | null;
+  keyTolerance: number;
   /** Carpeta dentro del bucket de texturas. */
   folder?: string;
   /** Versión reducida para el panel lateral del plano. */
@@ -127,7 +279,7 @@ export function TextureSection({
           className={`${compact ? 'h-24 w-full' : 'size-24 shrink-0'} overflow-hidden rounded-lg border border-line bg-surface`}
         >
           {url ? (
-            <img src={url} alt="Textura" className="size-full object-cover" />
+            <img src={url} alt="Textura" className="size-full object-contain" />
           ) : (
             <div className="grid size-full place-items-center text-dim">
               <ImageIcon className="size-5" />
@@ -183,6 +335,13 @@ export function TextureSection({
 
       {path ? (
         <div className="mt-3 space-y-3 border-t border-line pt-3">
+          <CutoutControls
+            url={url}
+            keyColor={keyColor}
+            keyTolerance={keyTolerance}
+            onChange={onFieldChange}
+          />
+
           <Field label="Cómo se aplica">
             <Select
               value={mode}

@@ -18,7 +18,7 @@ import {
   simplifyPath,
 } from '@/lib/geometry';
 import { clamp, fmtNum, round, snap as snapTo } from '@/lib/utils';
-import { usePlanStore } from './planStore';
+import { usePlanStore, ZOOM_MAX, ZOOM_MIN } from './planStore';
 
 /**
  * EDITOR 2D (vista cenital)
@@ -260,7 +260,7 @@ export function Editor2D({
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const newZoom = clamp(zoom * factor, 8, 240);
+    const newZoom = clamp(zoom * factor, ZOOM_MIN, ZOOM_MAX);
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     setView({
@@ -368,7 +368,7 @@ export function Editor2D({
       const start = pinch.current;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const newZoom = clamp((start.zoom * st.dist) / start.dist, 8, 240);
+      const newZoom = clamp((start.zoom * st.dist) / start.dist, ZOOM_MIN, ZOOM_MAX);
       // El punto del plano que había bajo el centro del pellizco se queda ahí.
       const mx = start.cx - rect.left;
       const my = start.cy - rect.top;

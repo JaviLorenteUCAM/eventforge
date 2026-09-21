@@ -128,6 +128,25 @@ comportaban todos antes de esta versión.
 La longitud es el recorrido en planta más el desnivel entre los dos extremos
 (`cableLength`), y quien la pide le suma la holgura.
 
+### Huecos en las texturas
+
+Dos mecanismos, un solo resultado:
+
+1. **Alfa del PNG.** El material lleva `alphaTest: 0.5` siempre que hay textura, así que
+   cualquier imagen con transparencia recorta sola. Se usa `alphaTest` y no `transparent`
+   porque el recorte es duro: no hay que ordenar nada por profundidad, el objeto se sigue
+   comportando como opaco y el borde queda limpio.
+2. **Color clave** (`texture_key_color`, `texture_key_tolerance`). La imagen se dibuja en un
+   `<canvas>`, se pone a cero el alfa de los píxeles que se parecen al color y se monta una
+   `CanvasTexture`. La comparación es la distancia euclídea en RGB normalizada sobre 441,67
+   (√3·255²); hace falta margen porque el color se ensucia al guardar en JPEG o al reescalar.
+
+Además `side: THREE.DoubleSide`: al abrir un hueco se ve el interior de la caja, y sin esto
+las caras de dentro desaparecerían.
+
+El recorte se aplica al cargar, en `useImageTexture`, y el resultado se cachea en el estado
+del componente: no se recalcula por frame.
+
 ### Los tres giros de un objeto
 
 `plan_objects` guarda `rotation` (giro en planta), `tilt` (inclinación) y `roll` (vuelco

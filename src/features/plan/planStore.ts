@@ -54,6 +54,16 @@ interface PlanEditorState {
 
 const DEFAULT_ZOOM = 42;
 
+/**
+ * Límites del zoom en píxeles por metro.
+ *
+ * El máximo se subió de 240 a 1200: con 240 un objeto de 8 cm —el fondo de una
+ * tele— se quedaba en 19 píxeles y no había forma de afinar. A 1200 px/m se ve
+ * un centímetro y pico por píxel, que es suficiente para colocar a mano.
+ */
+export const ZOOM_MIN = 4;
+export const ZOOM_MAX = 1200;
+
 /** Estado local del editor (no se persiste: es interfaz, no datos). */
 export const usePlanStore = create<PlanEditorState>((set, get) => ({
   mode: '2d',
@@ -89,7 +99,8 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   setLinkFrom: (linkFrom) => set({ linkFrom }),
   toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<PlanEditorState>),
   setView: (v) => set(v),
-  zoomBy: (factor) => set({ zoom: Math.min(240, Math.max(8, get().zoom * factor)) }),
+  zoomBy: (factor) =>
+    set({ zoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, get().zoom * factor)) }),
   resetView: () => set({ zoom: DEFAULT_ZOOM, panX: 40, panY: 40 }),
   setClipboard: (clipboard) => set({ clipboard }),
   setBgEdit: (bgEdit) => set({ bgEdit, selection: bgEdit ? [] : get().selection }),

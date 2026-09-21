@@ -237,6 +237,10 @@ export interface CatalogObject {
   texture_offset_x: number;
   texture_offset_y: number;
   texture_rotation: number;
+  /** Color que se recorta de la textura (hex). Null = sin recorte. */
+  texture_key_color: string | null;
+  /** Margen del recorte: 0 solo el color exacto, 1 se lo lleva todo. */
+  texture_key_tolerance: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -281,6 +285,10 @@ export interface WarehouseItem {
   texture_offset_x: number;
   texture_offset_y: number;
   texture_rotation: number;
+  /** Color que se recorta de la textura (hex). Null = sin recorte. */
+  texture_key_color: string | null;
+  /** Margen del recorte: 0 solo el color exacto, 1 se lo lleva todo. */
+  texture_key_tolerance: number;
   created_at: string;
   updated_at: string;
 }
@@ -306,6 +314,10 @@ export interface WarehouseItemVariant {
   texture_offset_x: number;
   texture_offset_y: number;
   texture_rotation: number;
+  /** Color que se recorta de la textura (hex). Null = sin recorte. */
+  texture_key_color: string | null;
+  /** Margen del recorte: 0 solo el color exacto, 1 se lo lleva todo. */
+  texture_key_tolerance: number;
   /** ¿Aparece como línea propia en el listado de material del evento? */
   adds_material: boolean;
   /** Con qué nombre aparece ahí. Vacío = el del estilo. */
