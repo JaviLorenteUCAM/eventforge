@@ -77,7 +77,10 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   showNetwork: true,
   showSignal: true,
   showMeasures: false,
-  snap: true,
+  // Arranca APAGADO: con una rejilla de 0,5 m, arrastrar daba saltos de medio
+  // metro y no había forma de dejar nada en un sitio concreto. Se enciende con
+  // el imán de la barra, y Mayús lo invierte mientras se arrastra.
+  snap: false,
 
   zoom: DEFAULT_ZOOM,
   panX: 40,

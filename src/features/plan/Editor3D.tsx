@@ -11,7 +11,7 @@ import type {
   PlanObject,
 } from "@/lib/types";
 import { cablePath, footprintOf } from "@/lib/geometry";
-import { snap as snapTo } from "@/lib/utils";
+import { round, snap as snapTo } from "@/lib/utils";
 import { usePlanStore } from "./planStore";
 import type { CommitUpdate } from "./Editor2D";
 import { isFeed } from "./cables";
@@ -149,9 +149,13 @@ function Scene({
     if (!o) return;
     let x = dragStart.current.x + (e.point.x - dragStart.current.px);
     let y = dragStart.current.y + (e.point.z - dragStart.current.pz);
-    if (snapOn) {
+    // Mayús invierte el ajuste, igual que en el plano 2D.
+    if (snapOn !== e.shiftKey) {
       x = snapTo(x, grid);
       y = snapTo(y, grid);
+    } else {
+      x = round(x, 3);
+      y = round(y, 3);
     }
     setPreview({ id: dragId, x, y });
   }

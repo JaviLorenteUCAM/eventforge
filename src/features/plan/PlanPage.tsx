@@ -871,7 +871,11 @@ export function PlanPage() {
         <Toggle active={store.showGrid} onClick={() => store.toggle('showGrid')} label="Rejilla">
           <Grid3x3 className="size-4" />
         </Toggle>
-        <Toggle active={snap} onClick={() => store.toggle('snap')} label="Ajuste a rejilla">
+        <Toggle
+          active={snap}
+          onClick={() => store.toggle('snap')}
+          label="Ajustar a la rejilla (Mayús lo invierte mientras arrastras)"
+        >
           <Magnet className="size-4" />
         </Toggle>
         <Toggle active={store.showLabels} onClick={() => store.toggle('showLabels')} label="Etiquetas">

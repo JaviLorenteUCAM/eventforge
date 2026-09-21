@@ -655,6 +655,11 @@ Vista cenital en **metros reales**. Rejilla configurable, zoom con rueda centrad
 cursor, desplazamiento con espacio o botón central, ajuste a rejilla, medidas, líneas guía,
 selección múltiple con marco, copiar/pegar, duplicar y **deshacer/rehacer**.
 
+El **ajuste a la rejilla** viene apagado: con una rejilla de 0,5 m, arrastrar daba saltos de
+medio metro y no había forma de dejar nada en un sitio concreto. Se enciende con el imán de la
+barra, y **Mayús lo invierte mientras arrastras**: con el imán apagado ajusta, con el imán
+encendido libera. Mientras mueves algo, su etiqueta muestra la posición exacta en metros.
+
 Los objetos del panel se pueden **arrastrar hasta el punto exacto** del plano, además de
 pulsarlos para colocarlos en el centro de la vista. Y cuando algo cae encima de otra cosa
 —un PC sobre una mesa— **se apoya encima** en lugar de atravesarla: la altura se calcula

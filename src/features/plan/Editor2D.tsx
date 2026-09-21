@@ -410,12 +410,19 @@ export function Editor2D({
     if (drag.kind === 'move') {
       let dx = p.x - drag.startX;
       let dy = p.y - drag.startY;
-      if (snap && !e.shiftKey) {
+      // Mayús invierte el ajuste: con el imán apagado ajusta, y con el imán
+      // encendido libera. Así se puede afinar sin ir a la barra.
+      if (snap !== e.shiftKey) {
         const first = objectById.get(drag.ids[0]);
         if (first) {
           dx = snapTo(Number(first.x) + dx, grid) - Number(first.x);
           dy = snapTo(Number(first.y) + dy, grid) - Number(first.y);
         }
+      } else {
+        // Sin ajuste se guarda al milímetro, que es la precisión de la base de
+        // datos: sin esto quedaban posiciones con quince decimales.
+        dx = round(dx, 3);
+        dy = round(dy, 3);
       }
       setDrag({ ...drag, dx, dy });
       return;
@@ -437,7 +444,7 @@ export function Editor2D({
       const dw = dxw * Math.sin(rad) + dyw * Math.cos(rad);
       let length = Math.max(0.05, drag.length + dl * 2);
       let width = Math.max(0.05, drag.width + dw * 2);
-      if (snap && !e.shiftKey) {
+      if (snap !== e.shiftKey) {
         length = Math.max(0.05, snapTo(length, grid / 2));
         width = Math.max(0.05, snapTo(width, grid / 2));
       }
@@ -496,7 +503,7 @@ export function Editor2D({
         const x = Number(o.x) + drag.dx;
         const y = Number(o.y) + drag.dy;
 
-        const patch: Partial<PlanObject> = { x, y };
+        const patch: Partial<PlanObject> = { x: round(x, 3), y: round(y, 3) };
         const previous: Partial<PlanObject> = { x: Number(o.x), y: Number(o.y) };
 
         // Si el objeto estaba APOYADO (en el suelo o encima de algo), se sigue
@@ -975,7 +982,13 @@ export function Editor2D({
                       zoom={zoom}
                       rotation={-Number(o.rotation)}
                       accent={isSelected}
-                      text={measureText(o)}
+                      // Mientras se arrastra importa DÓNDE va a quedar, no
+                      // cuánto mide: es lo que hace falta para colocarlo fino.
+                      text={
+                        drag?.kind === 'move' && drag.ids.includes(o.id)
+                          ? `x ${fmtNum(Number(o.x), 2)} · y ${fmtNum(Number(o.y), 2)} m`
+                          : measureText(o)
+                      }
                     />
                   ) : null}
                 </g>
