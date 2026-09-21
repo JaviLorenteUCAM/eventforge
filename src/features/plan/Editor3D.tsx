@@ -70,6 +70,7 @@ export function Editor3D(props: Props) {
         gl={{ preserveDrawingBuffer: true, antialias: true }}
         // near bajo para poder pegarse a un objeto sin que se recorte.
         camera={{ position: camera, fov: 45, near: 0.02, far: 500 }}
+        onPointerMissed={() => usePlanStore.getState().clearSelection()}
       >
         <color attach="background" args={["#070a12"]} />
         <fog
@@ -197,9 +198,11 @@ function Scene({
         rotation={[-Math.PI / 2, 0, 0]}
         position={[W / 2, 0, D / 2]}
         receiveShadow
+        onPointerDown={() => {
+          if (tool === 'select') clearSelection();
+        }}
         onPointerMove={handleGroundMove}
         onPointerUp={endDrag}
-        onPointerMissed={() => clearSelection()}
       >
         <planeGeometry args={[W, D]} />
         <meshStandardMaterial color="#111827" roughness={0.95} metalness={0} />
