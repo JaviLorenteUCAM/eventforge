@@ -23,6 +23,7 @@ import {
   Scaling,
   MoreHorizontal,
   MonitorPlay,
+  Usb,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -483,10 +484,12 @@ export function PlanPage() {
         requires_power: src.requires_power,
         requires_network: src.requires_network,
         requires_signal: src.requires_signal,
+        requires_usb: src.requires_usb,
         power_w: Number(src.power_w),
         outlet_count: src.outlet_count,
         port_count: src.port_count,
         signal_out_count: src.signal_out_count,
+        usb_port_count: src.usb_port_count,
       });
 
       const row =
@@ -851,6 +854,12 @@ export function PlanPage() {
               icon: <MonitorPlay className="size-3.5" />,
             },
             {
+              value: 'usb',
+              title: 'Cable USB: ratones, teclados, lectores…',
+              label: <span className="hidden sm:inline">USB</span>,
+              icon: <Usb className="size-3.5" />,
+            },
+            {
               value: 'measure',
               title: 'Regla: mide una distancia',
               label: <span className="hidden sm:inline">Regla</span>,
@@ -896,6 +905,13 @@ export function PlanPage() {
           label="Ver cableado de señal"
         >
           <MonitorPlay className="size-4" />
+        </Toggle>
+        <Toggle
+          active={store.showUsb}
+          onClick={() => store.toggle('showUsb')}
+          label="Ver cableado USB"
+        >
+          <Usb className="size-4" />
         </Toggle>
         </div>
 
@@ -1001,7 +1017,9 @@ export function PlanPage() {
           <span className="text-dim">
             {tool === 'signal'
               ? 'La imagen sale de las cámaras y los ordenadores: dales salidas de señal en su ficha.'
-              : `¿No hay de dónde tirar? En «Del evento» tienes el punto de ${tool === 'power' ? 'luz' : 'red'}, la acometida de la sala.`}
+              : tool === 'usb'
+                ? 'Los periféricos cuelgan de un equipo: dale puertos USB al ordenador o al hub en su ficha.'
+                : `¿No hay de dónde tirar? En «Del evento» tienes el punto de ${tool === 'power' ? 'luz' : 'red'}, la acometida de la sala.`}
           </span>
         </div>
       ) : tool === 'measure' ? (
@@ -1285,6 +1303,9 @@ export function PlanPage() {
               </Toggle>
               <Toggle active={store.showSignal} onClick={() => store.toggle('showSignal')} label="Señal">
                 <MonitorPlay className="size-4" />
+              </Toggle>
+              <Toggle active={store.showUsb} onClick={() => store.toggle('showUsb')} label="USB">
+                <Usb className="size-4" />
               </Toggle>
             </div>
           </div>

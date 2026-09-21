@@ -204,13 +204,29 @@ En el 3D hay dos grupos anidados a propósito: el de fuera solo POSICIONA y el d
 Si las etiquetas y los símbolos colgaran del grupo que gira, se irían de lado en cuanto la
 tele se pusiera vertical.
 
-### Los tres cableados
+### Cámara del 3D
 
-`plan_connections.kind` admite `power`, `network` y `signal`. El tercero es la imagen (HDMI,
-DisplayPort, USB-C, SDI) y se añadió en la migración `0009`.
+La rueda NO usa el zoom de OrbitControls. Ese zoom acorta el radio alrededor del punto de
+mira, así que en una sala de 90 metros giras la rueda y sigues dando vueltas al mismo sitio:
+nunca llegas a la alfombra del rincón.
 
-Para la señal NO hay tipos de objeto nuevos en el análisis: se deduce de dos columnas,
-`requires_signal` y `signal_out_count`.
+En su lugar hay un manejador propio (`Editor3D.tsx`) que mueve **cámara y punto de mira
+juntos** en la dirección de la vista, con un paso de `max(0.04, radio · 0.2)` metros y un tope
+contra el suelo. Se engancha en el elemento PADRE del lienzo y en fase de captura, para llegar
+antes que el manejador de OrbitControls sin tener que desactivar su zoom (que en táctil sigue
+haciendo falta para el pellizco).
+
+El suelo se dibuja 1 cm por debajo del cero y la rejilla a 5 mm. Con todo a la misma altura,
+la cara inferior de un objeto apoyado competía con el suelo por el mismo píxel y parpadeaba;
+las alfombras casi no se veían y había que subirlas a mano.
+
+### Los cuatro cableados
+
+`plan_connections.kind` admite `power`, `network`, `signal` y `usb` (migraciones `0009` y
+`0013`). Los dos últimos son la imagen (HDMI, DisplayPort, USB-C, SDI) y los periféricos.
+
+Ni la señal ni el USB añaden tipos de objeto al análisis: cada uno se deduce de dos columnas
+—`requires_signal`/`signal_out_count` y `requires_usb`/`usb_port_count`— con la misma regla.
 
 | Papel | Cómo se reconoce |
 |---|---|

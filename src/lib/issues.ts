@@ -32,7 +32,7 @@ const POWER_RELAYS: ObjectKind[] = ['power_strip'];
  */
 const NETWORK_SOURCES: ObjectKind[] = ['network_switch', 'network_router', 'network_source'];
 
-function buildAdjacency(connections: PlanConnection[], kind: 'power' | 'network' | 'signal') {
+function buildAdjacency(connections: PlanConnection[], kind: PlanConnection['kind']) {
   const adj = new Map<string, string[]>();
   const link = (a: string, b: string) => {
     const list = adj.get(a);
@@ -184,13 +184,64 @@ export function analyzePlan(objects: PlanObject[], connections: PlanConnection[]
     }
   }
 
+  // ----------------------------------------------------------------- USB --
+  // Mismo criterio que la señal: un ratón no consume corriente ni recibe
+  // imagen, solo cuelga de un puerto.
+  const usbAdj = buildAdjacency(connections, 'usb');
+  const hasPorts = (o: PlanObject) => Number(o.usb_port_count) > 0;
+  const usbHosts = objects.filter((o) => hasPorts(o) && !o.requires_usb).map((o) => o.id);
+  const usbSet = reachableFrom(usbHosts, usbAdj, (id) => {
+    const o = byId.get(id);
+    // Solo reparten los que tienen puertos: un teclado no alimenta a un ratón.
+    return Boolean(o && hasPorts(o));
+  });
+
+  for (const o of objects) {
+    if (!o.requires_usb) continue;
+    if (!usbSet.has(o.id)) {
+      issues.push({
+        id: `no_usb:${o.id}`,
+        objectId: o.id,
+        severity: 'error',
+        kind: 'no_usb',
+        title: `${nameOf(o)} — Sin USB`,
+        detail:
+          usbHosts.length === 0
+            ? 'No hay ningún equipo con puertos USB en el plano (un ordenador, un hub).'
+            : 'No hay ningún cable USB que llegue hasta este periférico.',
+      });
+    }
+  }
+
+  for (const o of objects) {
+    if (!hasPorts(o) || !o.requires_usb) continue;
+    const hasChildren = (usbAdj.get(o.id) ?? []).length > 0;
+    if (hasChildren && !usbSet.has(o.id)) {
+      issues.push({
+        id: `no_usb_relay:${o.id}`,
+        objectId: o.id,
+        severity: 'error',
+        kind: 'no_usb',
+        title: `${nameOf(o)} — Hub sin conectar`,
+        detail: 'Tiene periféricos colgando pero no está enchufado a ningún equipo.',
+      });
+    }
+  }
+
   // ----------------------------------------------------------- SATURACION --
   const powerDegree = new Map<string, number>();
   const netDegree = new Map<string, number>();
   const signalDegree = new Map<string, number>();
+  const usbDegree = new Map<string, number>();
   for (const c of connections) {
     const target =
-      c.kind === 'power' ? powerDegree : c.kind === 'network' ? netDegree : signalDegree;
+      c.kind === 'power'
+        ? powerDegree
+        : c.kind === 'network'
+          ? netDegree
+          : c.kind === 'signal'
+            ? signalDegree
+            : usbDegree;
     target.set(c.from_object_id, (target.get(c.from_object_id) ?? 0) + 1);
     target.set(c.to_object_id, (target.get(c.to_object_id) ?? 0) + 1);
   }
@@ -239,6 +290,23 @@ export function analyzePlan(objects: PlanObject[], connections: PlanConnection[]
         kind: 'overloaded_signal',
         title: `${nameOf(o)} — Salidas de señal insuficientes`,
         detail: `Salen ${used} cables y solo tiene ${o.signal_out_count} salidas. Hará falta un splitter.`,
+      });
+    }
+  }
+
+  // Más periféricos colgando que puertos.
+  for (const o of objects) {
+    if (Number(o.usb_port_count) <= 0) continue;
+    // Si el propio aparato cuelga de otro, uno de sus cables es su entrada.
+    const used = (usbDegree.get(o.id) ?? 0) - (o.requires_usb ? 1 : 0);
+    if (used > Number(o.usb_port_count)) {
+      issues.push({
+        id: `overloaded_usb:${o.id}`,
+        objectId: o.id,
+        severity: 'warning',
+        kind: 'overloaded_usb',
+        title: `${nameOf(o)} — Puertos USB insuficientes`,
+        detail: `Hay ${used} aparatos colgando y solo tiene ${o.usb_port_count} puertos. Hará falta un hub.`,
       });
     }
   }

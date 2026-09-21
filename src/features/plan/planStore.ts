@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import type { PlanObject } from '@/lib/types';
 
-export type PlanTool = 'select' | 'power' | 'network' | 'signal' | 'calibrate' | 'measure';
+export type PlanTool =
+  | 'select'
+  | 'power'
+  | 'network'
+  | 'signal'
+  | 'usb'
+  | 'calibrate'
+  | 'measure';
 export type PlanMode = '2d' | '3d';
 
 interface PlanEditorState {
@@ -16,6 +23,7 @@ interface PlanEditorState {
   showPower: boolean;
   showNetwork: boolean;
   showSignal: boolean;
+  showUsb: boolean;
   showMeasures: boolean;
   snap: boolean;
 
@@ -43,6 +51,7 @@ interface PlanEditorState {
       | 'showPower'
       | 'showNetwork'
       | 'showSignal'
+      | 'showUsb'
       | 'showMeasures'
       | 'snap',
   ) => void;
@@ -76,6 +85,7 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   showPower: true,
   showNetwork: true,
   showSignal: true,
+  showUsb: true,
   showMeasures: false,
   // Arranca APAGADO: con una rejilla de 0,5 m, arrastrar daba saltos de medio
   // metro y no había forma de dejar nada en un sitio concreto. Se enciende con

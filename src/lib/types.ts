@@ -73,6 +73,9 @@ export const OBJECT_KINDS = [
   'signal_source',
   'signal_splitter',
   'signal_sink',
+  'usb_host',
+  'usb_hub',
+  'peripheral',
   'decor',
   'tool',
 ] as const;
@@ -92,28 +95,36 @@ export const OBJECT_KIND_LABEL: Record<ObjectKind, string> = {
   signal_source: 'Fuente de señal',
   signal_splitter: 'Splitter / matriz',
   signal_sink: 'Pantalla / monitor',
+  usb_host: 'Equipo con USB',
+  usb_hub: 'Hub USB',
+  peripheral: 'Periférico',
   decor: 'Decoración',
   tool: 'Herramienta',
 };
 
 export type Shape = 'box' | 'cylinder' | 'plane' | 'text' | 'line';
 /**
- * Los tres cableados de un montaje: corriente, red y SEÑAL (la imagen que va
- * por HDMI, DisplayPort, USB-C o SDI de las cámaras y los ordenadores a las
- * pantallas).
+ * Los cuatro cableados de un montaje:
+ *   power   -> corriente
+ *   network -> Ethernet
+ *   signal  -> la imagen (HDMI, DisplayPort, USB-C, SDI)
+ *   usb     -> los periféricos que solo cuelgan de un puerto: un ratón no
+ *              consume corriente propia ni recibe imagen, solo USB
  */
-export type ConnectionKind = 'power' | 'network' | 'signal';
+export type ConnectionKind = 'power' | 'network' | 'signal' | 'usb';
 
 export const CONNECTION_LABEL: Record<ConnectionKind, string> = {
   power: 'Eléctrico',
   network: 'Red',
   signal: 'Señal',
+  usb: 'USB',
 };
 
 export const CONNECTION_COLOR: Record<ConnectionKind, string> = {
   power: '#f59e0b',
   network: '#22d3ee',
   signal: '#a78bfa',
+  usb: '#34d399',
 };
 
 /** Cable que se propone por defecto al tirar uno de cada tipo. */
@@ -121,6 +132,7 @@ export const CONNECTION_DEFAULT_CABLE: Record<ConnectionKind, string> = {
   power: 'Manguera 3G1.5',
   network: 'Cat6 U/UTP',
   signal: 'HDMI 2.1',
+  usb: 'USB-A a USB-B',
 };
 export type Unit = 'ud' | 'm' | 'kg' | 'l' | 'pack';
 export type VehicleType = 'van' | 'truck' | 'trailer' | 'custom';
@@ -226,10 +238,14 @@ export interface CatalogObject {
   requires_power: boolean;
   requires_network: boolean;
   requires_signal: boolean;
+  /** Cuelga de un puerto USB: un ratón, un teclado, un lector. */
+  requires_usb: boolean;
   power_w: number;
   outlet_count: number;
   port_count: number;
   signal_out_count: number;
+  /** Puertos USB que ofrece: un ordenador, un hub. */
+  usb_port_count: number;
   is_system: boolean;
   texture_path: string | null;
   texture_mode: TextureMode;
@@ -282,10 +298,14 @@ export interface WarehouseItem {
   requires_power: boolean;
   requires_network: boolean;
   requires_signal: boolean;
+  /** Cuelga de un puerto USB: un ratón, un teclado, un lector. */
+  requires_usb: boolean;
   power_w: number;
   outlet_count: number;
   port_count: number;
   signal_out_count: number;
+  /** Puertos USB que ofrece: un ordenador, un hub. */
+  usb_port_count: number;
   texture_path: string | null;
   texture_mode: TextureMode;
   texture_scale: number;
@@ -408,11 +428,15 @@ export interface PlanObject {
   requires_network: boolean;
   /** Necesita recibir imagen: una tele, un monitor, un proyector. */
   requires_signal: boolean;
+  /** Cuelga de un puerto USB: un ratón, un teclado, un lector. */
+  requires_usb: boolean;
   power_w: number;
   outlet_count: number;
   port_count: number;
   /** Salidas de imagen que ofrece: una cámara, un PC, una matriz de 8. */
   signal_out_count: number;
+  /** Puertos USB que ofrece: un ordenador, un hub. */
+  usb_port_count: number;
   locked: boolean;
   props: Record<string, unknown>;
   created_at: string;
@@ -526,9 +550,11 @@ export interface PlanIssue {
     | 'no_power'
     | 'no_network'
     | 'no_signal'
+    | 'no_usb'
     | 'overloaded_strip'
     | 'overloaded_switch'
     | 'overloaded_signal'
+    | 'overloaded_usb'
     | 'orphan_cable';
   title: string;
   detail: string;

@@ -146,6 +146,7 @@ export function Editor2D({
     showPower,
     showNetwork,
     showSignal,
+    showUsb,
     showMeasures,
     snap,
     bgEdit,
@@ -801,6 +802,7 @@ export function Editor2D({
               if (c.kind === 'power' && !showPower) return null;
               if (c.kind === 'network' && !showNetwork) return null;
               if (c.kind === 'signal' && !showSignal) return null;
+              if (c.kind === 'usb' && !showUsb) return null;
               const a = objectById.get(c.from_object_id);
               const b = objectById.get(c.to_object_id);
               if (!a || !b) return null;

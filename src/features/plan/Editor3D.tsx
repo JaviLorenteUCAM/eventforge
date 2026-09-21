@@ -104,6 +104,7 @@ function Scene({
   const showPower = usePlanStore((s) => s.showPower);
   const showNetwork = usePlanStore((s) => s.showNetwork);
   const showSignal = usePlanStore((s) => s.showSignal);
+  const showUsb = usePlanStore((s) => s.showUsb);
   const snapOn = usePlanStore((s) => s.snap);
   const tool = usePlanStore((s) => s.tool);
   const linkFrom = usePlanStore((s) => s.linkFrom);
@@ -169,6 +170,63 @@ function Scene({
     },
     [camera],
   );
+
+  /**
+   * ZOOM CON LA RUEDA
+   *
+   * OrbitControls no acerca: acorta el radio alrededor del punto de mira. En
+   * una sala de 90 metros eso significa que por mucho que gires la rueda te
+   * quedas dando vueltas al mismo sitio y nunca llegas a la alfombra que hay
+   * en un rincón.
+   *
+   * Aquí la rueda hace lo que se espera: AVANZAR. La cámara y su punto de mira
+   * se mueven juntos en la dirección en la que se está mirando, con un paso
+   * proporcional a lo lejos que se esté —grande cuando ves toda la nave, fino
+   * cuando estás encima de un objeto— y frenando justo antes de atravesar el
+   * suelo.
+   *
+   * Se engancha en el elemento PADRE del lienzo y en fase de captura, para
+   * llegar antes que el manejador propio de OrbitControls.
+   */
+  useEffect(() => {
+    const host = gl.domElement.parentElement;
+    if (!host) return;
+
+    const SUELO = 0.06; // altura mínima de la cámara sobre el suelo
+
+    const onWheel = (e: WheelEvent) => {
+      const controls = controlsRef.current;
+      if (!controls) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+
+      // El paso crece con la distancia: así se avanza rápido de lejos y se
+      // afina de cerca, sin topes ni saltos.
+      const radius = camera.position.distanceTo(controls.target);
+      const step = Math.max(0.04, radius * 0.2) * (e.deltaY > 0 ? -1 : 1);
+      const delta = dir.multiplyScalar(step);
+
+      // Frenar contra el suelo en lugar de atravesarlo.
+      if (delta.y < 0 && camera.position.y + delta.y < SUELO) {
+        const margen = camera.position.y - SUELO;
+        const factor = margen > 0 ? margen / -delta.y : 0;
+        delta.multiplyScalar(Math.max(0, Math.min(1, factor)));
+      }
+
+      camera.position.add(delta);
+      // El punto de mira viaja con la cámara: se sigue orbitando alrededor de
+      // lo que se tiene delante, no del centro de la sala.
+      controls.target.add(delta);
+      controls.update();
+    };
+
+    host.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => host.removeEventListener('wheel', onWheel, { capture: true });
+  }, [gl, camera]);
 
   // Tecla F: enfocar lo seleccionado, como en cualquier editor 3D.
   useEffect(() => {
@@ -254,9 +312,15 @@ function Scene({
       />
 
       {/* Suelo: recibe sombras y captura los arrastres */}
+      {/*
+        El suelo va 1 cm por DEBAJO del cero. Con todo a la misma altura, la
+        cara inferior de un objeto apoyado quedaba justo sobre el suelo y las
+        dos se peleaban por el mismo píxel: parpadeaban y las alfombras casi no
+        se veían. Por eso había que subirlas a mano.
+      */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[W / 2, 0, D / 2]}
+        position={[W / 2, -0.01, D / 2]}
         receiveShadow
         onPointerDown={(e) => {
           // Igual que con los objetos: la rueda es para moverse, no para
@@ -272,7 +336,7 @@ function Scene({
       </mesh>
 
       <Grid
-        position={[W / 2, 0.002, D / 2]}
+        position={[W / 2, -0.005, D / 2]}
         args={[W, D]}
         cellSize={grid}
         cellThickness={0.5}
@@ -469,6 +533,7 @@ function Scene({
         if (c.kind === "power" && !showPower) return null;
         if (c.kind === "network" && !showNetwork) return null;
         if (c.kind === "signal" && !showSignal) return null;
+        if (c.kind === "usb" && !showUsb) return null;
         const a = objectById.get(c.from_object_id);
         const b = objectById.get(c.to_object_id);
         if (!a || !b) return null;
@@ -536,9 +601,6 @@ function Scene({
         // Lo justo para no meterse dentro de un objeto pequeño.
         minDistance={0.08}
         maxDistance={Math.max(W, D) * 4}
-        // La rueda acerca hacia donde apunta el ratón, como en el plano 2D, en
-        // vez de hacia el centro de la órbita.
-        zoomToCursor
         mouseButtons={{
           LEFT: undefined as unknown as THREE.MOUSE,
           MIDDLE: THREE.MOUSE.PAN,

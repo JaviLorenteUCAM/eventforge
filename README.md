@@ -174,6 +174,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 10 | `supabase/migrations/0010_object_angles.sql` | Girar los objetos en los tres ejes |
 | 11 | `supabase/migrations/0011_texture_transparency.sql` | Color transparente en las texturas |
 | 12 | `supabase/migrations/0012_silhouette_mode.sql` | Modo silueta: la imagen es la forma del objeto |
+| 13 | `supabase/migrations/0013_usb_cabling.sql` | Cableado USB y categoría de periféricos |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -577,7 +578,8 @@ eventforge/
 │       ├── 0009_signal_cabling.sql  # cableado de señal
 │       ├── 0010_object_angles.sql   # giro en los tres ejes
 │       ├── 0011_texture_transparency.sql
-│       └── 0012_silhouette_mode.sql   # la imagen es la forma del objeto
+│       ├── 0012_silhouette_mode.sql   # la imagen es la forma del objeto
+│       └── 0013_usb_cabling.sql       # cableado USB, categoría periféricos
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -684,9 +686,13 @@ En **3D** el botón izquierdo queda libre para seleccionar y arrastrar objetos; 
 gira con el **botón derecho** y la vista se desplaza con la **rueda pulsada**. La rueda solo
 mueve la vista: nunca selecciona ni arrastra nada.
 
-Para ver algo de cerca, **doble clic** sobre el objeto (o **F** con él seleccionado): la cámara
-se planta delante a una distancia acorde a su tamaño. En una sala de 90 metros es la única
-forma cómoda de llegar a un rincón.
+**La rueda avanza**, no orbita: la cámara y su punto de mira se mueven juntos hacia donde
+estás mirando, con un paso proporcional a lo lejos que estés —rápido cuando ves toda la nave,
+fino cuando estás encima de algo— y frenando justo antes de atravesar el suelo. Así se puede
+llegar a mirar de cerca una alfombra de dos centímetros.
+
+Para plantarse delante de algo de golpe, **doble clic** sobre el objeto (o **F** con él
+seleccionado): la cámara se coloca a una distancia acorde a su tamaño.
 
 Los objetos son entidades reales de la base de datos: se seleccionan, mueven, rotan (tirador
 dedicado, con ajuste a 15°), redimensionan (tirador de esquina), duplican, bloquean y
@@ -831,13 +837,15 @@ Al añadir un objeto eliges el **origen**:
 Al crear un objeto nuevo desde el editor se pregunta dónde guardarlo, porque es la diferencia
 entre llevar existencias o no.
 
-### Cableado: corriente, red y señal
-Tres herramientas de cable:
+### Cableado: corriente, red, señal y USB
+Cuatro herramientas de cable:
 
 - ⚡ **Eléctrico** — la corriente.
 - 🌐 **Red** — Ethernet.
 - 📺 **Señal** — la imagen: HDMI, DisplayPort, USB-C o SDI. Es lo que lleva a las cámaras,
   los monitores y los televisores lo que tienen que mostrar.
+- 🔌 **USB** — los periféricos. Un ratón no consume corriente propia ni recibe imagen: solo
+  cuelga de un puerto del ordenador, así que necesita su propio cable y sus propios metros.
 
 Cada uno se dibuja con su trazo (continuo, punteado y de raya larga) para distinguirlos de
 un vistazo, y se pueden ocultar por separado desde la barra.
@@ -866,10 +874,13 @@ de material**.
 Las regletas tienen número de tomas; los switches, número de puertos; y los aparatos de
 imagen, **salidas de señal**.
 
-Para la señal no hace falta un tipo de objeto especial, basta con dos datos en la ficha:
+Para la señal y para el USB no hace falta un tipo de objeto especial, basta con dos datos en
+la ficha de cada uno:
 
 - **Necesita señal** — una tele, un monitor, un proyector.
 - **Salidas de señal que ofrece** — una cámara, un ordenador, un splitter de 8.
+- **Necesita USB** — un ratón, un teclado, un lector.
+- **Puertos USB que ofrece** — un ordenador, un hub.
 
 De ahí sale todo: una **fuente** es lo que tiene salidas y no necesita recibir nada; un
 **repartidor** (splitter, matriz) tiene salidas y además recibe; y un **consumidor** solo
@@ -888,6 +899,9 @@ El sistema recorre el grafo de conexiones y avisa de:
   imagen.
 - ⚠️ **Salidas de señal insuficientes** — salen más cables de los que el aparato tiene
   salidas: hará falta un splitter.
+- ⚠️ **Sin USB** — un periférico que no cuelga de ningún equipo.
+- ⚠️ **Hub sin conectar** — un hub con periféricos colgando que no está enchufado a nada.
+- ⚠️ **Puertos USB insuficientes** — más aparatos que puertos: hará falta un hub.
 - ⚠️ **Regleta sin alimentar** — tiene aparatos colgando pero no recibe corriente.
 - ⚠️ **Tomas o puertos insuficientes** — más conexiones que tomas físicas.
 - ⚠️ **Cable huérfano** — uno de sus extremos ya no existe.

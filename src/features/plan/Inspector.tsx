@@ -377,7 +377,7 @@ function ObjectInspector({
           )}
         </Section>
 
-        <Section title="Electricidad, red y señal">
+        <Section title="Corriente, red, señal y USB">
           <Checkbox
             label="Necesita corriente"
             checked={object.requires_power}
@@ -392,6 +392,11 @@ function ObjectInspector({
             label="Necesita señal (imagen)"
             checked={object.requires_signal}
             onChange={(e) => set({ requires_signal: e.target.checked }, 'Señal')}
+          />
+          <Checkbox
+            label="Necesita USB"
+            checked={object.requires_usb}
+            onChange={(e) => set({ requires_usb: e.target.checked }, 'USB')}
           />
           <div className="grid grid-cols-3 gap-2">
             <Field label="Consumo">
@@ -421,6 +426,15 @@ function ObjectInspector({
                 value={object.signal_out_count}
                 onChange={(v) =>
                   set({ signal_out_count: Math.max(0, Math.round(v)) }, 'Salidas de señal')
+                }
+                step={1}
+              />
+            </Field>
+            <Field label="Puertos USB" hint="Ordenadores y hubs.">
+              <NumberInput
+                value={object.usb_port_count}
+                onChange={(v) =>
+                  set({ usb_port_count: Math.max(0, Math.round(v)) }, 'Puertos USB')
                 }
                 step={1}
               />

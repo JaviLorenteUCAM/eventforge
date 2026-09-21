@@ -374,10 +374,12 @@ const EMPTY_FORM = {
   requires_power: false,
   requires_network: false,
   requires_signal: false,
+  requires_usb: false,
   power_w: 0,
   outlet_count: 0,
   port_count: 0,
   signal_out_count: 0,
+  usb_port_count: 0,
   texture_mode: 'atlas' as TextureMode,
   texture_scale: 1,
   texture_offset_x: 0,
@@ -436,10 +438,12 @@ export function ItemFormModal({
             requires_power: item.requires_power,
             requires_network: item.requires_network,
             requires_signal: item.requires_signal,
+            requires_usb: item.requires_usb,
             power_w: Number(item.power_w),
             outlet_count: Number(item.outlet_count),
             port_count: Number(item.port_count),
             signal_out_count: Number(item.signal_out_count),
+            usb_port_count: Number(item.usb_port_count),
             texture_mode: item.texture_mode,
             texture_scale: Number(item.texture_scale),
             texture_offset_x: Number(item.texture_offset_x),
@@ -599,7 +603,7 @@ export function ItemFormModal({
 
         <div className="rounded-xl border border-line bg-surface-2 p-3.5 sm:col-span-2">
           <p className="mb-3 text-[12px] font-medium uppercase tracking-[0.1em] text-dim">
-            Electricidad, red y señal
+            Corriente, red, señal y USB
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Checkbox
@@ -617,7 +621,11 @@ export function ItemFormModal({
               checked={form.requires_signal}
               onChange={(e) => setForm({ ...form, requires_signal: e.target.checked })}
             />
-            <div />
+            <Checkbox
+              label="Necesita USB"
+              checked={form.requires_usb}
+              onChange={(e) => setForm({ ...form, requires_usb: e.target.checked })}
+            />
             <Field label="Consumo">
               <NumberInput
                 value={form.power_w}
@@ -651,7 +659,13 @@ export function ItemFormModal({
                 step={1}
               />
             </Field>
-            <div />
+            <Field label="Puertos USB que ofrece" hint="Ordenadores y hubs.">
+              <NumberInput
+                value={form.usb_port_count}
+                onChange={(v) => setForm({ ...form, usb_port_count: Math.round(v) })}
+                step={1}
+              />
+            </Field>
           </div>
         </div>
 

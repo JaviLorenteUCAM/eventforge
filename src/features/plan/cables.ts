@@ -10,21 +10,26 @@ import type { ConnectionKind } from '@/lib/types';
 
 /** ¿La herramienta activa sirve para tirar cable? */
 export function isCableTool(tool: string) {
-  return tool === 'power' || tool === 'network' || tool === 'signal';
+  return tool === 'power' || tool === 'network' || tool === 'signal' || tool === 'usb';
 }
 
 /** Tipo de cable que crea cada herramienta. */
 export function toolKind(tool: string): ConnectionKind {
-  return tool === 'network' ? 'network' : tool === 'signal' ? 'signal' : 'power';
+  if (tool === 'network') return 'network';
+  if (tool === 'signal') return 'signal';
+  if (tool === 'usb') return 'usb';
+  return 'power';
 }
 
 /**
- * Trazo de cada cableado: la corriente va continua, la red punteada y la señal
- * de raya larga. Así se distinguen aunque se impriman en blanco y negro.
+ * Trazo de cada cableado: la corriente va continua, la red punteada, la señal
+ * de raya larga y el USB de puntitos. Así se distinguen aunque se impriman en
+ * blanco y negro.
  */
 export function dashFor(kind: ConnectionKind, strokePx: number) {
   if (kind === 'network') return `${strokePx * 6} ${strokePx * 4}`;
   if (kind === 'signal') return `${strokePx * 14} ${strokePx * 5}`;
+  if (kind === 'usb') return `${strokePx * 2} ${strokePx * 4}`;
   return undefined;
 }
 

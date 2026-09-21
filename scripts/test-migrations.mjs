@@ -87,6 +87,7 @@ const FILES = [
   '0010_object_angles.sql',
   '0011_texture_transparency.sql',
   '0012_silhouette_mode.sql',
+  '0013_usb_cabling.sql',
 ];
 let allOk = true;
 
