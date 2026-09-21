@@ -128,6 +128,35 @@ comportaban todos antes de esta versión.
 La longitud es el recorrido en planta más el desnivel entre los dos extremos
 (`cableLength`), y quien la pide le suma la holgura.
 
+### Los tres giros de un objeto
+
+`plan_objects` guarda `rotation` (giro en planta), `tilt` (inclinación) y `roll` (vuelco
+sobre su propia cara), en grados. Se aplican en orden yaw → pitch → roll, que en three.js es
+el Euler `'YXZ'`.
+
+Correspondencia de ejes, que es donde es fácil equivocarse:
+
+| Eje propio | three.js | Ángulo que gira sobre él |
+|---|---|---|
+| largo | x | `tilt` |
+| alto | y | `rotation` |
+| ancho | z | `roll` |
+
+(`boxGeometry` recibe `[length, height, width]`, de ahí la correspondencia.)
+
+**Las medidas no cambian al girar.** Lo que cambia es el hueco, y lo calcula `footprintOf()`
+(`lib/geometry.ts`) como la caja recta que envuelve al objeto girado:
+
+    lado_i = Σ_j |R_ij| · medida_j
+
+Con `tilt` y `roll` a cero devuelve las medidas tal cual, que es el caso normal y no cuesta
+nada. De ahí beben la planta (lo que se dibuja y dónde se puede pulsar), `restingZ()` (para
+apoyar cosas encima) y el 3D (para que la base siga en el suelo).
+
+En el 3D hay dos grupos anidados a propósito: el de fuera solo POSICIONA y el de dentro gira.
+Si las etiquetas y los símbolos colgaran del grupo que gira, se irían de lado en cuanto la
+tele se pusiera vertical.
+
 ### Los tres cableados
 
 `plan_connections.kind` admite `power`, `network` y `signal`. El tercero es la imagen (HDMI,

@@ -14,7 +14,49 @@ import { round } from './utils';
  * razonar y de probar por separado.
  */
 
-/** ¿El punto cae dentro del objeto, teniendo en cuenta su rotación? */
+/**
+ * HUECO QUE OCUPA UN OBJETO GIRADO
+ *
+ * Las medidas de un objeto no cambian al girarlo: una tele de 1,24 × 0,08 ×
+ * 0,72 m puesta en vertical sigue midiendo eso. Lo que cambia es el hueco.
+ *
+ * `rotation` (el giro en planta) ya se resuelve dibujando el objeto girado, así
+ * que aquí solo entran los otros dos: la inclinación y el giro sobre su cara.
+ * Se calcula la caja recta que envuelve al objeto ya inclinado, que es
+ * exactamente el sitio que ocupa.
+ *
+ *   largo' = |cos·…|·largo + … (suma de las proyecciones de cada eje)
+ *
+ * Con tilt y roll a cero devuelve las medidas tal cual, que es el caso normal
+ * y no cuesta nada.
+ */
+export function footprintOf(o: PlanObject): { length: number; width: number; height: number } {
+  const l = Number(o.length_m) || 0;
+  const w = Number(o.width_m) || 0;
+  const h = Number(o.height_m) || 0;
+
+  const tilt = Number(o.tilt) || 0;
+  const roll = Number(o.roll) || 0;
+  if (tilt === 0 && roll === 0) return { length: l, width: w, height: h };
+
+  const tx = (tilt * Math.PI) / 180;
+  const rz = (roll * Math.PI) / 180;
+  const ct = Math.abs(Math.cos(tx));
+  const st = Math.abs(Math.sin(tx));
+  const cr = Math.abs(Math.cos(rz));
+  const sr = Math.abs(Math.sin(rz));
+
+  // Ejes propios: x = largo, y = ancho, z = alto. La inclinación gira sobre el
+  // largo y el vuelco sobre el ancho, así que el largo solo se ve afectado por
+  // el segundo y el ancho y el alto por los dos.
+  return {
+    length: l * cr + h * sr,
+    width: w * ct + (l * sr + h * cr) * st,
+    height: (l * sr + h * cr) * ct + w * st,
+  };
+}
+
+/** ¿El punto cae dentro del objeto, teniendo en cuenta cómo esté girado? */
 export function containsPoint(o: PlanObject, px: number, py: number, margin = 0): boolean {
   const cx = Number(o.x);
   const cy = Number(o.y);
@@ -24,10 +66,8 @@ export function containsPoint(o: PlanObject, px: number, py: number, margin = 0)
   const dy = py - cy;
   const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
   const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
-  return (
-    Math.abs(lx) <= Number(o.length_m) / 2 + margin &&
-    Math.abs(ly) <= Number(o.width_m) / 2 + margin
-  );
+  const box = footprintOf(o);
+  return Math.abs(lx) <= box.length / 2 + margin && Math.abs(ly) <= box.width / 2 + margin;
 }
 
 /**
@@ -70,7 +110,8 @@ export function restingZ(
     if (ignore.has(o.id)) continue;
     if (NOT_STACKABLE.has(o.shape)) continue;
     if (!containsPoint(o, x, y)) continue;
-    const candidate = Number(o.z) + Number(o.height_m);
+    // Lo que cuenta para apoyarse encima es el alto REAL, ya girado.
+    const candidate = Number(o.z) + footprintOf(o).height;
     if (candidate > top) top = candidate;
   }
   return round(top, 3);
@@ -80,7 +121,7 @@ export function restingZ(
 export const centerOf = (o: PlanObject) => ({ x: Number(o.x), y: Number(o.y) });
 
 /** Altura del punto por el que se conecta un cable: el centro vertical. */
-export const anchorZ = (o: PlanObject) => Number(o.z ?? 0) + Number(o.height_m ?? 0) / 2;
+export const anchorZ = (o: PlanObject) => Number(o.z ?? 0) + footprintOf(o).height / 2;
 
 /**
  * Trazado completo de un cable: origen, puntos intermedios y destino.

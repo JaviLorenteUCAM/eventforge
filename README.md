@@ -171,6 +171,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 7 | `supabase/migrations/0007_cable_paths_and_feeds.sql` | Cables trazados a mano y punto de red principal |
 | 8 | `supabase/migrations/0008_item_variants.sql` | Estilos del material (manteles, dibujos) con sus propias unidades |
 | 9 | `supabase/migrations/0009_signal_cabling.sql` | Cableado de señal (HDMI, DisplayPort, USB-C) |
+| 10 | `supabase/migrations/0010_object_angles.sql` | Girar los objetos en los tres ejes |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -571,7 +572,8 @@ eventforge/
 │       ├── 0006_warehouse_first.sql # el almacén pasa a ser el origen de los objetos
 │       ├── 0007_cable_paths_and_feeds.sql
 │       ├── 0008_item_variants.sql   # estilos del material
-│       └── 0009_signal_cabling.sql  # cableado de señal
+│       ├── 0009_signal_cabling.sql  # cableado de señal
+│       └── 0010_object_angles.sql   # giro en los tres ejes
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -735,6 +737,23 @@ Hay dos modos de aplicarla:
 
 En los cilindros la plantilla es la superficie lateral desenrollada (perímetro × alto), porque
 las tapas no se pueden desplegar en la misma imagen sin deformarlas.
+
+### Orientación: girar un objeto en los tres ejes
+
+Un objeto no solo gira sobre el plano. Tiene tres ángulos:
+
+- **Giro en planta** — el de mover una mesa.
+- **Inclinación** — hacia delante o atrás: un proyector apuntando al suelo, un atril.
+- **Vuelco** — gira sobre su propia cara. Es el que pone **una tele en vertical** cuando va
+  en un soporte de pie.
+
+Hay atajos —*De pie*, *Vertical*, *Tumbado*, *Inclinado*— para no pelearse con los grados.
+
+Las **medidas del objeto no cambian**: una tele de 1,24 × 0,08 × 0,72 m puesta en vertical
+sigue midiendo eso. Lo que cambia es el hueco que ocupa, y de eso se encarga el plano solo:
+la planta dibuja el sitio real, la altura para apoyar cosas encima se recalcula y en 3D el
+objeto sigue apoyado en el suelo. Ya no hace falta dar de alta un objeto distinto para la
+misma tele girada.
 
 ### Altura sobre el suelo
 

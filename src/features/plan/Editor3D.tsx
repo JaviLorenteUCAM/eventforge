@@ -1,15 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Grid, Html, Line, OrbitControls } from '@react-three/drei';
-import { Network, Zap } from 'lucide-react';
-import * as THREE from 'three';
-import type { Plan, PlanBackground, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
-import { cablePath } from '@/lib/geometry';
-import { snap as snapTo } from '@/lib/utils';
-import { usePlanStore } from './planStore';
-import type { CommitUpdate } from './Editor2D';
-import { isFeed } from './cables';
-import { GroundImage, TexturedMesh, type TextureSpec } from './TexturedMesh';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Grid, Html, Line, OrbitControls } from "@react-three/drei";
+import { Network, Zap } from "lucide-react";
+import * as THREE from "three";
+import type {
+  Plan,
+  PlanBackground,
+  PlanConnection,
+  PlanIssue,
+  PlanObject,
+} from "@/lib/types";
+import { cablePath, footprintOf } from "@/lib/geometry";
+import { snap as snapTo } from "@/lib/utils";
+import { usePlanStore } from "./planStore";
+import type { CommitUpdate } from "./Editor2D";
+import { isFeed } from "./cables";
+import { GroundImage, TexturedMesh, type TextureSpec } from "./TexturedMesh";
 
 /**
  * EDITOR 3D
@@ -35,7 +41,11 @@ interface Props {
   textures: Map<string, TextureSpec>;
   issuesByObject: Map<string, PlanIssue[]>;
   onCommit: (updates: CommitUpdate[], label: string) => void;
-  onGlReady: (gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) => void;
+  onGlReady: (
+    gl: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+  ) => void;
 }
 
 export function Editor3D(props: Props) {
@@ -46,7 +56,11 @@ export function Editor3D(props: Props) {
   // Encuadre inicial: cámara en diagonal, lo bastante lejos para ver el recinto
   // completo con un campo de visión de 45°.
   const span = Math.max(W, D);
-  const camera: [number, number, number] = [W / 2 + span * 0.6, span * 0.7, D / 2 + span * 0.85];
+  const camera: [number, number, number] = [
+    W / 2 + span * 0.6,
+    span * 0.7,
+    D / 2 + span * 0.85,
+  ];
 
   return (
     <div className="size-full bg-[var(--ef-canvas-2)]">
@@ -56,8 +70,11 @@ export function Editor3D(props: Props) {
         gl={{ preserveDrawingBuffer: true, antialias: true }}
         camera={{ position: camera, fov: 45, near: 0.1, far: 500 }}
       >
-        <color attach="background" args={['#070a12']} />
-        <fog attach="fog" args={['#070a12', Math.max(W, D) * 1.6, Math.max(W, D) * 4]} />
+        <color attach="background" args={["#070a12"]} />
+        <fog
+          attach="fog"
+          args={["#070a12", Math.max(W, D) * 1.6, Math.max(W, D) * 4]}
+        />
 
         <Scene {...props} />
       </Canvas>
@@ -94,15 +111,27 @@ function Scene({
   const grid = Number(plan.grid_size_m) || 0.5;
 
   const [dragId, setDragId] = useState<string | null>(null);
-  const dragStart = useRef<{ x: number; y: number; px: number; pz: number } | null>(null);
-  const [preview, setPreview] = useState<{ id: string; x: number; y: number } | null>(null);
+  const dragStart = useRef<{
+    x: number;
+    y: number;
+    px: number;
+    pz: number;
+  } | null>(null);
+  const [preview, setPreview] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
 
   useEffect(() => {
     onGlReady(gl, scene, camera);
   }, [gl, scene, camera, onGlReady]);
 
-  const objectById = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
+  const objectById = useMemo(
+    () => new Map(objects.map((o) => [o.id, o])),
+    [objects],
+  );
 
   const positionOf = useCallback(
     (o: PlanObject) => {
@@ -137,7 +166,7 @@ function Scene({
               previous: { x: Number(o.x), y: Number(o.y) },
             },
           ],
-          'Mover objeto',
+          "Mover objeto",
         );
       }
     }
@@ -150,7 +179,7 @@ function Scene({
   return (
     <>
       <ambientLight intensity={0.55} />
-      <hemisphereLight args={['#93c5fd', '#0f172a', 0.5]} />
+      <hemisphereLight args={["#93c5fd", "#0f172a", 0.5]} />
       <directionalLight
         position={[W, Math.max(W, D), D * 0.5]}
         intensity={1.5}
@@ -207,7 +236,9 @@ function Scene({
 
       {/* Paredes de referencia */}
       <lineSegments position={[W / 2, Number(plan.height_m) / 2, D / 2]}>
-        <edgesGeometry args={[new THREE.BoxGeometry(W, Number(plan.height_m), D)]} />
+        <edgesGeometry
+          args={[new THREE.BoxGeometry(W, Number(plan.height_m), D)]}
+        />
         <lineBasicMaterial color="#334155" />
       </lineSegments>
 
@@ -217,96 +248,119 @@ function Scene({
         const w = Number(o.width_m);
         const h = Math.max(0.01, Number(o.height_m));
         const isSelected = selection.includes(o.id);
-        const hasError = issuesByObject.get(o.id)?.some((i) => i.severity === 'error');
+        const hasError = issuesByObject
+          .get(o.id)
+          ?.some((i) => i.severity === "error");
 
         // Los objetos de tipo texto no tienen volumen: solo rótulo flotante.
-        if (o.shape === 'text') {
+        if (o.shape === "text") {
           return (
             <Html
               key={o.id}
               position={[pos.x, Number(o.z) + 0.05, pos.y]}
               center
               distanceFactor={12}
-              style={{ pointerEvents: 'none' }}
+              style={{ pointerEvents: "none" }}
             >
               <span
                 className="whitespace-nowrap rounded-md px-2 py-0.5 text-[13px] font-semibold"
-                style={{ color: o.color, textShadow: '0 1px 6px rgba(0,0,0,0.9)' }}
+                style={{
+                  color: o.color,
+                  textShadow: "0 1px 6px rgba(0,0,0,0.9)",
+                }}
               >
-                {o.label || 'Texto'}
+                {o.label || "Texto"}
               </span>
             </Html>
           );
         }
 
+        // Alto REAL, ya girado: es lo que hay que subir para que la base
+        // siga apoyada en el suelo y lo que marca dónde va la etiqueta.
+        const realH = footprintOf(o).height;
+
         return (
-          <group
-            key={o.id}
-            position={[pos.x, Number(o.z) + h / 2, pos.y]}
-            rotation={[0, (-Number(o.rotation) * Math.PI) / 180, 0]}
-          >
-            <TexturedMesh
-              shape={o.shape}
-              length={l}
-              width={w}
-              height={h}
-              color={o.color}
-              texture={textures.get(o.id)}
-              emissive={isSelected ? '#6366f1' : hasError ? '#7f1d1d' : '#000000'}
-              emissiveIntensity={isSelected ? 0.45 : hasError ? 0.35 : 0}
-              transparent={o.shape === 'plane'}
-              opacity={o.shape === 'plane' ? 0.85 : 1}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                if (tool !== 'select') return;
-                if (e.shiftKey) toggleInSelection(o.id);
-                else setSelection([o.id]);
-                if (o.locked) return;
-                setDragId(o.id);
-                dragStart.current = {
-                  x: Number(o.x),
-                  y: Number(o.y),
-                  px: e.point.x,
-                  pz: e.point.z,
-                };
-                if (controlsRef.current) controlsRef.current.enabled = false;
-              }}
-              onPointerUp={endDrag}
-            />
+          <group key={o.id} position={[pos.x, Number(o.z) + realH / 2, pos.y]}>
+            <group
+              // Giro en planta, inclinación y vuelco sobre su propia cara, en
+              // ese orden (el de toda la vida: yaw → pitch → roll).
+              rotation={[
+                (Number(o.tilt) * Math.PI) / 180,
+                (-Number(o.rotation) * Math.PI) / 180,
+                (Number(o.roll) * Math.PI) / 180,
+                "YXZ",
+              ]}
+            >
+              <TexturedMesh
+                shape={o.shape}
+                length={l}
+                width={w}
+                height={h}
+                color={o.color}
+                texture={textures.get(o.id)}
+                emissive={
+                  isSelected ? "#6366f1" : hasError ? "#7f1d1d" : "#000000"
+                }
+                emissiveIntensity={isSelected ? 0.45 : hasError ? 0.35 : 0}
+                transparent={o.shape === "plane"}
+                opacity={o.shape === "plane" ? 0.85 : 1}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  if (tool !== "select") return;
+                  if (e.shiftKey) toggleInSelection(o.id);
+                  else setSelection([o.id]);
+                  if (o.locked) return;
+                  setDragId(o.id);
+                  dragStart.current = {
+                    x: Number(o.x),
+                    y: Number(o.y),
+                    px: e.point.x,
+                    pz: e.point.z,
+                  };
+                  if (controlsRef.current) controlsRef.current.enabled = false;
+                }}
+                onPointerUp={endDrag}
+              />
 
-            {isSelected ? (
-              <lineSegments position={[0, 0, 0]}>
-                <edgesGeometry args={[new THREE.BoxGeometry(l * 1.04, h * 1.04, w * 1.04)]} />
-                <lineBasicMaterial color="#818cf8" />
-              </lineSegments>
-            ) : null}
+              {isSelected ? (
+                <lineSegments position={[0, 0, 0]}>
+                  <edgesGeometry
+                    args={[new THREE.BoxGeometry(l * 1.04, h * 1.04, w * 1.04)]}
+                  />
+                  <lineBasicMaterial color="#818cf8" />
+                </lineSegments>
+              ) : null}
 
-            {linkFrom === o.id ? (
-              <lineSegments>
-                <edgesGeometry args={[new THREE.BoxGeometry(l * 1.12, h * 1.12, w * 1.12)]} />
-                <lineBasicMaterial color="#22d3ee" />
-              </lineSegments>
-            ) : null}
+              {linkFrom === o.id ? (
+                <lineSegments>
+                  <edgesGeometry
+                    args={[new THREE.BoxGeometry(l * 1.12, h * 1.12, w * 1.12)]}
+                  />
+                  <lineBasicMaterial color="#22d3ee" />
+                </lineSegments>
+              ) : null}
+            </group>
 
             {/* En 3D el punto de luz y el de red llevan su símbolo encima:
                 un cilindro de 40 cm no se distingue de nada más. */}
             {isFeed(o.kind) ? (
               <Html
-                position={[0, h / 2 + 0.12, 0]}
+                position={[0, realH / 2 + 0.12, 0]}
                 center
                 distanceFactor={10}
                 occlude={false}
-                style={{ pointerEvents: 'none' }}
+                style={{ pointerEvents: "none" }}
               >
                 <span
                   className="grid size-7 place-items-center rounded-full border-2"
                   style={{
                     borderColor: o.color,
                     color: o.color,
-                    background: 'color-mix(in oklab, var(--ef-canvas) 75%, transparent)',
+                    background:
+                      "color-mix(in oklab, var(--ef-canvas) 75%, transparent)",
                   }}
                 >
-                  {o.kind === 'power_source' ? (
+                  {o.kind === "power_source" ? (
                     <Zap className="size-4" />
                   ) : (
                     <Network className="size-4" />
@@ -317,15 +371,15 @@ function Scene({
 
             {showLabels && o.label ? (
               <Html
-                position={[0, h / 2 + 0.22, 0]}
+                position={[0, realH / 2 + 0.22, 0]}
                 center
                 distanceFactor={14}
                 occlude={false}
-                style={{ pointerEvents: 'none' }}
+                style={{ pointerEvents: "none" }}
               >
                 <span
                   className="whitespace-nowrap rounded-md border border-line bg-[color-mix(in_oklab,var(--ef-canvas)_82%,transparent)] px-1.5 py-0.5 text-[11px] text-ink"
-                  style={{ backdropFilter: 'blur(4px)' }}
+                  style={{ backdropFilter: "blur(4px)" }}
                 >
                   {o.label}
                 </span>
@@ -337,9 +391,9 @@ function Scene({
 
       {/* Cables */}
       {connections.map((c) => {
-        if (c.kind === 'power' && !showPower) return null;
-        if (c.kind === 'network' && !showNetwork) return null;
-        if (c.kind === 'signal' && !showSignal) return null;
+        if (c.kind === "power" && !showPower) return null;
+        if (c.kind === "network" && !showNetwork) return null;
+        if (c.kind === "signal" && !showSignal) return null;
         const a = objectById.get(c.from_object_id);
         const b = objectById.get(c.to_object_id);
         if (!a || !b) return null;
@@ -350,7 +404,11 @@ function Scene({
 
         // El trazo se dibuja en planta; aquí se le da altura: sale del aparato,
         // baja al suelo para recorrer el camino y vuelve a subir al destino.
-        const flat = cablePath({ ...a, x: pa.x, y: pa.y }, { ...b, x: pb.x, y: pb.y }, c.waypoints);
+        const flat = cablePath(
+          { ...a, x: pa.x, y: pa.y },
+          { ...b, x: pb.x, y: pb.y },
+          c.waypoints,
+        );
         const floor = 0.03;
         const points: [number, number, number][] = flat.map((p, i) => {
           if (i === 0) return [p.x, ya, p.y];
@@ -371,9 +429,9 @@ function Scene({
             key={c.id}
             points={points}
             color={c.color}
-            lineWidth={c.kind === 'power' ? 2.2 : 1.8}
-            dashed={c.kind !== 'power'}
-            dashScale={c.kind === 'signal' ? 4 : 8}
+            lineWidth={c.kind === "power" ? 2.2 : 1.8}
+            dashed={c.kind !== "power"}
+            dashScale={c.kind === "signal" ? 4 : 8}
           />
         );
       })}

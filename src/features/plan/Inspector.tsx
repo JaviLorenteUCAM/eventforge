@@ -21,6 +21,7 @@ import {
   type PlanObject,
 } from '@/lib/types';
 import { OBJECT_KINDS, OBJECT_KIND_LABEL, type ObjectKind } from '@/lib/types';
+import { footprintOf } from '@/lib/geometry';
 import { cn, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
 import type { CommitUpdate } from './Editor2D';
 
@@ -86,6 +87,21 @@ export function Inspector({
     />
   );
 }
+
+/** Grados dentro de 0..359, para que no se acumulen vueltas. */
+const wrap = (v: number) => ((v % 360) + 360) % 360;
+
+/**
+ * Orientaciones de un vistazo. La que hacía falta de verdad es «Vertical»:
+ * una tele en un soporte de pie, sin tener que dar de alta otro objeto con el
+ * largo y el alto cambiados.
+ */
+const ORIENTATIONS = [
+  { label: 'De pie', tilt: 0, roll: 0, hint: 'Como está en su ficha' },
+  { label: 'Vertical', tilt: 0, roll: 90, hint: 'Gira sobre su cara: una pantalla en vertical' },
+  { label: 'Tumbado', tilt: 90, roll: 0, hint: 'Apoyado de espaldas, como una tarima' },
+  { label: 'Inclinado', tilt: 20, roll: 0, hint: 'Ligeramente reclinado, como un atril' },
+];
 
 /** Alturas habituales al colgar un objeto (foco de pared, pantalla, techo). */
 const ELEVATION_PRESETS = [
@@ -205,6 +221,10 @@ function ObjectInspector({
             </Field>
           </div>
           <p className="num text-[11.5px] text-dim">Volumen {fmtM3(volume)}</p>
+          <p className="text-[11.5px] leading-relaxed text-dim">
+            Son las medidas del objeto. Para girarlo —una pantalla en vertical, algo
+            tumbado— usa la orientación, ahí abajo.
+          </p>
         </Section>
 
         <Section title="Posición">
@@ -250,7 +270,7 @@ function ObjectInspector({
               </button>
             ))}
           </div>
-          <Field label="Rotación">
+          <Field label="Giro en planta" hint="Como mover una mesa: gira sobre el suelo.">
             <NumberInput
               value={Number(object.rotation)}
               onChange={(v) => set({ rotation: ((v % 360) + 360) % 360 }, 'Rotar')}
@@ -260,6 +280,61 @@ function ObjectInspector({
               max={360}
             />
           </Field>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Inclinación" hint="Hacia delante o atrás.">
+              <NumberInput
+                value={Number(object.tilt)}
+                onChange={(v) => set({ tilt: wrap(v) }, 'Inclinar')}
+                unit="°"
+                step={15}
+                min={-360}
+                max={360}
+              />
+            </Field>
+            <Field label="Vuelco" hint="Gira sobre su propia cara.">
+              <NumberInput
+                value={Number(object.roll)}
+                onChange={(v) => set({ roll: wrap(v) }, 'Voltear')}
+                unit="°"
+                step={15}
+                min={-360}
+                max={360}
+              />
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {ORIENTATIONS.map((p) => {
+              const active =
+                Math.abs(Number(object.tilt) - p.tilt) < 0.5 &&
+                Math.abs(Number(object.roll) - p.roll) < 0.5;
+              return (
+                <button
+                  key={p.label}
+                  title={p.hint}
+                  onClick={() => set({ tilt: p.tilt, roll: p.roll }, 'Orientar')}
+                  className={cn(
+                    'rounded-md border px-2 py-1 text-[11px] transition-colors',
+                    active
+                      ? 'border-accent-soft bg-surface-2 text-ink'
+                      : 'border-line text-dim hover:text-muted',
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {Number(object.tilt) || Number(object.roll) ? (
+            <p className="num rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+              Girado ocupa {fmtNum(footprintOf(object).length, 2)} ×{' '}
+              {fmtNum(footprintOf(object).width, 2)} × {fmtNum(footprintOf(object).height, 2)} m.
+              Sus medidas no cambian: sigue midiendo {fmtNum(Number(object.length_m), 2)} ×{' '}
+              {fmtNum(Number(object.width_m), 2)} × {fmtNum(Number(object.height_m), 2)} m.
+            </p>
+          ) : null}
           <Checkbox
             label="Bloqueado"
             checked={object.locked}

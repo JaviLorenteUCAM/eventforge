@@ -373,7 +373,12 @@ export interface PlanObject {
   x: number;
   y: number;
   z: number;
+  /** Giro en planta, en grados: el de mover una mesa. */
   rotation: number;
+  /** Inclinación hacia delante o atrás, en grados. */
+  tilt: number;
+  /** Giro sobre su propia cara, en grados. 90 pone una pantalla en vertical. */
+  roll: number;
   length_m: number;
   width_m: number;
   height_m: number;

@@ -84,6 +84,7 @@ const FILES = [
   '0007_cable_paths_and_feeds.sql',
   '0008_item_variants.sql',
   '0009_signal_cabling.sql',
+  '0010_object_angles.sql',
 ];
 let allOk = true;
 

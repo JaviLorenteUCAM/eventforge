@@ -11,6 +11,7 @@ import type {
 } from '@/lib/types';
 import {
   cablePath,
+  footprintOf,
   objectAt,
   pathD,
   restingZ,
@@ -838,8 +839,11 @@ export function Editor2D({
           <g>
             {objects.map((raw) => {
               const o = liveObject(raw);
-              const l = Number(o.length_m);
-              const w = Number(o.width_m);
+              // Lo que se pinta en planta es el hueco REAL: una tele puesta en
+              // vertical ocupa distinto aunque siga midiendo lo mismo.
+              const box = footprintOf(o);
+              const l = box.length;
+              const w = box.width;
               const isSelected = selection.includes(o.id);
               const isLinkSource = linkFrom === o.id;
               const objIssues = issuesByObject.get(o.id);
@@ -985,8 +989,8 @@ export function Editor2D({
               transform={`translate(${Number(single.x)},${Number(single.y)}) rotate(${Number(single.rotation)})`}
             >
               <circle
-                cx={Number(single.length_m) / 2}
-                cy={Number(single.width_m) / 2}
+                cx={footprintOf(single).length / 2}
+                cy={footprintOf(single).width / 2}
                 r={5 / zoom}
                 fill="var(--ef-accent-soft)"
                 stroke="var(--ef-canvas)"
