@@ -126,6 +126,62 @@ function Scene({
   } | null>(null);
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
 
+  /** Punto de mira inicial: el centro del recinto. Solo al abrir el plano. */
+  useEffect(() => {
+    const c = controlsRef.current;
+    if (!c) return;
+    c.target.set(Number(plan.width_m) / 2, 0.6, Number(plan.depth_m) / 2);
+    c.update();
+    // A partir de aquí manda el usuario: no se repone en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.id]);
+
+  /**
+   * Lleva la cámara hasta un objeto: pasa a ser el punto de mira y la cámara
+   * se acerca a una distancia proporcional a su tamaño, conservando la
+   * dirección desde la que se estaba mirando.
+   *
+   * Es la forma cómoda de ver algo de cerca en una sala de 90 metros: sin
+   * esto hay que orbitar alrededor del centro y no se llega.
+   */
+  const focusOn = useCallback(
+    (o: PlanObject) => {
+      const c = controlsRef.current;
+      if (!c) return;
+      const box = footprintOf(o);
+      const target = new THREE.Vector3(
+        Number(o.x),
+        Number(o.z) + box.height / 2,
+        Number(o.y),
+      );
+      const size = Math.max(box.length, box.width, box.height, 0.2);
+      const dir = new THREE.Vector3()
+        .subVectors(camera.position, c.target)
+        .normalize();
+      // Si la cámara estuviera justo encima, la dirección degenera.
+      if (!Number.isFinite(dir.x) || dir.lengthSq() < 0.001) {
+        dir.set(0.6, 0.6, 0.6).normalize();
+      }
+
+      camera.position.copy(target).addScaledVector(dir, size * 2.2 + 0.4);
+      c.target.copy(target);
+      c.update();
+    },
+    [camera],
+  );
+
+  // Tecla F: enfocar lo seleccionado, como en cualquier editor 3D.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "f" && e.key !== "F") return;
+      if ((e.target as HTMLElement)?.closest("input, textarea, select")) return;
+      const first = objects.find((o) => selection.includes(o.id));
+      if (first) focusOn(first);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [objects, selection, focusOn]);
+
   useEffect(() => {
     onGlReady(gl, scene, camera);
   }, [gl, scene, camera, onGlReady]);
@@ -202,8 +258,11 @@ function Scene({
         rotation={[-Math.PI / 2, 0, 0]}
         position={[W / 2, 0, D / 2]}
         receiveShadow
-        onPointerDown={() => {
-          if (tool === 'select') clearSelection();
+        onPointerDown={(e) => {
+          // Igual que con los objetos: la rueda es para moverse, no para
+          // cambiar la selección.
+          if (e.button !== 0) return;
+          if (tool === "select") clearSelection();
         }}
         onPointerMove={handleGroundMove}
         onPointerUp={endDrag}
@@ -313,6 +372,10 @@ function Scene({
                 transparent={o.shape === "plane"}
                 opacity={o.shape === "plane" ? 0.85 : 1}
                 onPointerDown={(e) => {
+                  // Solo el botón izquierdo. Con la rueda se desplaza la vista,
+                  // y si el puntero pasaba por encima de algo se lo llevaba por
+                  // delante sin querer.
+                  if (e.button !== 0) return;
                   e.stopPropagation();
                   if (tool !== "select") return;
                   if (e.shiftKey) toggleInSelection(o.id);
@@ -328,6 +391,10 @@ function Scene({
                   if (controlsRef.current) controlsRef.current.enabled = false;
                 }}
                 onPointerUp={endDrag}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  focusOn(o);
+                }}
               />
 
               {isSelected ? (
@@ -453,14 +520,21 @@ function Scene({
         Por defecto three.js pone el giro en el botón izquierdo, que es
         justamente el que hace falta para trabajar con los objetos.
       */}
+      {/*
+        Sin `target` como prop: drei lo reescribe en CADA render y, como el
+        array se crea nuevo cada vez, el punto de mira volvía al centro de la
+        sala una y otra vez. En un recinto de 90 metros eso significaba que por
+        mucho que acercaras con la rueda nunca llegabas al objeto: la cámara se
+        iba al medio. Ahora se coloca una sola vez, al abrir el plano, y a
+        partir de ahí mandan el desplazamiento, el zoom y la tecla F.
+      */}
       <OrbitControls
         ref={controlsRef}
-        target={[W / 2, 0.6, D / 2]}
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={Math.PI / 2.05}
-        // 1,5 m era demasiado para mirar de cerca un soporte o una regleta.
-        minDistance={0.2}
+        // Lo justo para no meterse dentro de un objeto pequeño.
+        minDistance={0.08}
         maxDistance={Math.max(W, D) * 4}
         // La rueda acerca hacia donde apunta el ratón, como en el plano 2D, en
         // vez de hacia el centro de la órbita.

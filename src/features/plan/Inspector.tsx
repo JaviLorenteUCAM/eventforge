@@ -693,6 +693,8 @@ function PlanInspector({ plan, onChange }: { plan: Plan; onChange: (patch: Parti
           <Shortcut keys="Rueda" action="Zoom" />
           <Shortcut keys="3D · botón derecho" action="Girar la cámara" />
           <Shortcut keys="3D · rueda pulsada" action="Desplazar la vista" />
+          <Shortcut keys="3D · doble clic" action="Acercarse a ese objeto" />
+          <Shortcut keys="3D · F" action="Acercarse a lo seleccionado" />
           <Shortcut keys="Ctrl + D" action="Duplicar" />
           <Shortcut keys="Ctrl + C / V" action="Copiar / pegar" />
           <Shortcut keys="Ctrl + Z / Y" action="Deshacer / rehacer" />

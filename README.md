@@ -679,7 +679,12 @@ biblioteca, el inspector y el resto de opciones se abren como hoja inferior cuan
 falta.
 
 En **3D** el botón izquierdo queda libre para seleccionar y arrastrar objetos; la cámara se
-gira con el **botón derecho** y la vista se desplaza con la **rueda pulsada**.
+gira con el **botón derecho** y la vista se desplaza con la **rueda pulsada**. La rueda solo
+mueve la vista: nunca selecciona ni arrastra nada.
+
+Para ver algo de cerca, **doble clic** sobre el objeto (o **F** con él seleccionado): la cámara
+se planta delante a una distancia acorde a su tamaño. En una sala de 90 metros es la única
+forma cómoda de llegar a un rincón.
 
 Los objetos son entidades reales de la base de datos: se seleccionan, mueven, rotan (tirador
 dedicado, con ajuste a 15°), redimensionan (tirador de esquina), duplican, bloquean y
