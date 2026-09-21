@@ -76,9 +76,27 @@ import {
 } from '@/data/backgrounds';
 
 /** Medidas por defecto de las figuras básicas, en metros. */
+/**
+ * Objetos que no salen del almacén: las figuras sueltas para marcar zonas y
+ * los PUNTOS PRINCIPALES de la sala.
+ *
+ * Los dos puntos no son material que se compre: son la acometida del recinto,
+ * de donde salen la corriente y la red. Por eso vienen de serie, se colocan
+ * como cualquier otro objeto y se dibujan como un círculo con su símbolo.
+ */
 const BASIC_SHAPES: Record<
   BasicShape,
-  { label: string; shape: PlanObject['shape']; length_m: number; width_m: number; height_m: number }
+  {
+    label: string;
+    shape: PlanObject['shape'];
+    length_m: number;
+    width_m: number;
+    height_m: number;
+    kind?: PlanObject['kind'];
+    color?: string;
+    outlet_count?: number;
+    port_count?: number;
+  }
 > = {
   box: { label: 'Rectángulo', shape: 'box', length_m: 1.5, width_m: 0.8, height_m: 0.75 },
   square: { label: 'Cuadrado', shape: 'box', length_m: 1, width_m: 1, height_m: 0.75 },
@@ -86,6 +104,26 @@ const BASIC_SHAPES: Record<
   plane: { label: 'Superficie', shape: 'plane', length_m: 2, width_m: 1, height_m: 0.02 },
   line: { label: 'Línea', shape: 'line', length_m: 2, width_m: 0.05, height_m: 0.02 },
   text: { label: 'Texto', shape: 'text', length_m: 1.2, width_m: 0.35, height_m: 0.01 },
+  'power-point': {
+    label: 'Punto de luz',
+    shape: 'cylinder',
+    length_m: 0.4,
+    width_m: 0.4,
+    height_m: 0.3,
+    kind: 'power_source',
+    color: '#f59e0b',
+    outlet_count: 2,
+  },
+  'network-point': {
+    label: 'Punto de red',
+    shape: 'cylinder',
+    length_m: 0.4,
+    width_m: 0.4,
+    height_m: 0.3,
+    kind: 'network_source',
+    color: '#22d3ee',
+    port_count: 1,
+  },
 };
 
 export function PlanPage() {
@@ -444,7 +482,13 @@ export function PlanPage() {
 
       const row =
         payload.source === 'shape'
-          ? { ...base, ...BASIC_SHAPES[payload.shape], kind: 'generic' as const, color: '#94a3b8' }
+          ? {
+              ...base,
+              kind: 'generic' as PlanObject['kind'],
+              color: '#94a3b8',
+              // El propio objeto manda: un punto de luz trae su tipo y su color.
+              ...BASIC_SHAPES[payload.shape],
+            }
           : payload.source === 'warehouse'
             ? fromSource(
                 payload.item,
@@ -503,53 +547,6 @@ export function PlanPage() {
       void handleAdd({ source: 'warehouse', item, variant }, at);
     },
     [handleAdd, catalog.data, items.data, variants.data],
-  );
-
-  /**
-   * Punto de luz y punto de red: la acometida de la que cuelga todo lo demás.
-   * Se colocan desde la propia herramienta de cableado, que es cuando hacen
-   * falta, sin tener que darlos de alta antes en el almacén.
-   */
-  const handleCreateFeed = useCallback(
-    async (kind: 'power' | 'network', at: Waypoint) => {
-      if (!plan) return;
-      const isPower = kind === 'power';
-      const n = objectList.filter((o) => o.kind === (isPower ? 'power_source' : 'network_source')).length + 1;
-
-      try {
-        const { ids, history: entry } = await ops.addObjects([
-          {
-            plan_id: plan.id,
-            x: round(at.x, 2),
-            y: round(at.y, 2),
-            z: 0,
-            rotation: 0,
-            label: isPower ? `Punto de luz ${n}` : `Punto de red ${n}`,
-            kind: isPower ? 'power_source' : 'network_source',
-            length_m: 0.15,
-            width_m: 0.08,
-            height_m: 0.15,
-            color: isPower ? '#f59e0b' : '#22d3ee',
-            shape: 'box' as const,
-            requires_power: false,
-            requires_network: false,
-            power_w: 0,
-            outlet_count: isPower ? 2 : 0,
-            port_count: isPower ? 0 : 1,
-          },
-        ]);
-        history.push(entry);
-        setSelection(ids);
-        toast.success(
-          isPower
-            ? 'Punto de luz colocado. Lo que no llegue hasta él por cable no tendrá corriente.'
-            : 'Punto de red colocado. Engánchale el router o el switch para repartir la red.',
-        );
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'No se ha podido crear el punto');
-      }
-    },
-    [plan, objectList, ops, history, setSelection],
   );
 
   const handleDelete = useCallback(async () => {
@@ -976,8 +973,8 @@ export function PlanPage() {
             que ser recto.
           </span>
           <span className="text-dim">
-            Un clic en el suelo coloca {tool === 'power' ? 'un punto de luz' : 'un punto de red'}, la
-            acometida de la que cuelga todo lo demás.
+            ¿No hay de dónde tirar? En «Del evento» tienes el punto de{' '}
+            {tool === 'power' ? 'luz' : 'red'}, la acometida de la sala.
           </span>
         </div>
       ) : tool === 'measure' ? (
@@ -1020,7 +1017,6 @@ export function PlanPage() {
               onSelectConnection={setSelectedConnectionId}
               onCommit={(u, l) => void commit(u, l)}
               onLink={(a, b, w) => void handleLink(a, b, w)}
-              onCreateFeed={(k, at) => void handleCreateFeed(k, at)}
               onDropObject={handleDropObject}
               svgRef={svgRef}
             />

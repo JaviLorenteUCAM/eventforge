@@ -65,8 +65,6 @@ interface Props {
   onCommit: (updates: CommitUpdate[], label: string) => void;
   /** Crea un cable. `waypoints` viene vacío cuando el trazo es recto. */
   onLink: (fromId: string, toId: string, waypoints: Waypoint[]) => void;
-  /** Alta de un punto de luz o de red desde la propia herramienta de cableado. */
-  onCreateFeed: (kind: 'power' | 'network', at: Waypoint) => void;
   /** Suelta de un objeto arrastrado desde el panel del almacén. */
   onDropObject: (payload: string, at: Waypoint) => void;
   svgRef: React.RefObject<SVGSVGElement | null>;
@@ -92,8 +90,6 @@ type DragState =
   | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
   /** Cable dibujándose a mano: se van acumulando los puntos del trazo. */
   | { kind: 'cable'; fromId: string; points: Waypoint[]; overId: string | null }
-  /** Clic con una herramienta de cable sobre el vacío: da de alta una acometida. */
-  | { kind: 'feed'; x: number; y: number; moved: boolean }
   | null;
 
 /**
@@ -126,7 +122,6 @@ export function Editor2D({
   onSelectConnection,
   onCommit,
   onLink,
-  onCreateFeed,
   onDropObject,
   svgRef,
 }: Props) {
@@ -337,17 +332,10 @@ export function Editor2D({
       return;
     }
 
-    // Con una herramienta de cable, un clic en el vacío coloca la acometida:
-    // el punto de luz o el punto de red del que cuelga todo lo demás. Salvo que
-    // hubiera un cable a medio hacer: entonces el clic fuera lo cancela, que es
-    // lo que espera cualquiera.
+    // Un clic en el vacío con una herramienta de cable cancela el cable a
+    // medio hacer y no hace nada más.
     if (tool === 'power' || tool === 'network') {
-      if (linkFrom) {
-        setLinkFrom(null);
-        return;
-      }
-      const p = toWorld(e.clientX, e.clientY);
-      setDrag({ kind: 'feed', x: p.x, y: p.y, moved: false });
+      setLinkFrom(null);
       return;
     }
     onSelectConnection(null);
@@ -389,15 +377,6 @@ export function Editor2D({
     }
 
     if (!drag) return;
-
-    if (drag.kind === 'feed') {
-      // Si se arrastra, ya no es un clic: no se crea nada.
-      const p = toWorld(e.clientX, e.clientY);
-      if (!drag.moved && Math.hypot(p.x - drag.x, p.y - drag.y) > 0.15) {
-        setDrag({ ...drag, moved: true });
-      }
-      return;
-    }
 
     if (drag.kind === 'cable') {
       const p = toWorld(e.clientX, e.clientY);
@@ -560,12 +539,7 @@ export function Editor2D({
       return;
     }
 
-    // Punto de luz / punto de red: solo si ha sido un clic, no un arrastre.
-    if (drag.kind === 'feed') {
-      if (!drag.moved) onCreateFeed(tool === 'network' ? 'network' : 'power', { x: drag.x, y: drag.y });
-      setDrag(null);
-      return;
-    }
+
 
     if (drag.kind === 'resize') {
       const o = objectById.get(drag.id);
@@ -933,8 +907,12 @@ export function Editor2D({
                     />
                   )}
 
+                  {/* Punto de luz y punto de red: el símbolo dice qué son de
+                      un vistazo, sin tener que leer la etiqueta. */}
+                  <FeedSymbol kind={o.kind} size={Math.min(l, w)} color={o.color} zoom={zoom} />
+
                   {/* Marca de orientación (no aplica a texto ni líneas) */}
-                  {o.shape !== 'text' && o.shape !== 'line' ? (
+                  {o.shape !== 'text' && o.shape !== 'line' && !isFeed(o.kind) ? (
                     <line
                       x1={0}
                       y1={0}
@@ -1293,6 +1271,60 @@ export function Editor2D({
         </ZoomButton>
       </div>
     </div>
+  );
+}
+
+/** ¿Es una acometida: el punto de luz o el punto de red de la sala? */
+export function isFeed(kind: string) {
+  return kind === 'power_source' || kind === 'network_source';
+}
+
+/**
+ * Símbolo de las acometidas, dibujado dentro del círculo.
+ *
+ * Los dos caben en una caja de 1×1 centrada en el origen, de modo que basta
+ * con escalarla al tamaño del objeto. El trazo usa `vector-effect` para que no
+ * engorde al acercar el zoom, igual que el resto del plano.
+ */
+function FeedSymbol({
+  kind,
+  size,
+  color,
+  zoom,
+}: {
+  kind: string;
+  size: number;
+  color: string;
+  zoom: number;
+}) {
+  if (!isFeed(kind)) return null;
+
+  // El dibujo ocupa el 55 % del diámetro: deja aire contra el borde.
+  const k = size * 0.55;
+  const w = Math.max(1.6 / zoom, k * 0.09);
+
+  return (
+    <g pointerEvents="none" transform={`scale(${k})`}>
+      {kind === 'power_source' ? (
+        // Rayo
+        <path
+          d="M0.16,-0.52 L-0.26,0.06 L-0.02,0.06 L-0.16,0.52 L0.26,-0.06 L0.02,-0.06 Z"
+          fill={color}
+          stroke={color}
+          strokeWidth={w / k / 2}
+          strokeLinejoin="round"
+        />
+      ) : (
+        // Nodo central con tres ramas: el icono de red de toda la vida
+        <g stroke={color} strokeWidth={w / k} strokeLinecap="round" fill={color}>
+          <path d="M0,-0.12 L0,-0.4 M0,0.12 L0,0.26 M-0.34,0.26 L0.34,0.26 M-0.34,0.26 L-0.34,0.42 M0.34,0.26 L0.34,0.42" fill="none" />
+          <rect x={-0.16} y={-0.12} width={0.32} height={0.24} rx={0.05} />
+          <circle cx={0} cy={-0.44} r={0.09} />
+          <circle cx={-0.34} cy={0.46} r={0.08} />
+          <circle cx={0.34} cy={0.46} r={0.08} />
+        </g>
+      )}
+    </g>
   );
 }
 

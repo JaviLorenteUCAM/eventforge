@@ -770,12 +770,14 @@ una recta —puede bordear la pared, rodear el escenario o serpentear—, y esos
 en el listado de material. También sigue valiendo el modo antiguo: clic en el origen, clic en
 el destino, y sale recto.
 
-Con una de las dos herramientas activas, un **clic en el suelo** coloca la acometida:
+En el panel, bajo **Del evento**, están los dos **puntos principales** de la sala. Se colocan
+como cualquier otro objeto —pulsando o arrastrando— y se dibujan como un círculo con su
+símbolo, tanto en 2D como en 3D:
 
-- **Punto de luz** — de donde sale la corriente. Lo que no llegue hasta uno por cable aparece
-  como *Sin electricidad*.
-- **Punto de red principal** — la roseta que trae Internet. Puedes colgarle un router, un
-  switch o directamente un PC.
+- ⚡ **Punto de luz** — de donde sale la corriente. Lo que no llegue hasta uno por cable
+  aparece como *Sin electricidad*.
+- 🌐 **Punto de red** — la roseta que trae Internet. Puedes colgarle un router, un switch o
+  directamente un PC.
 
 La
 longitud se estima por la distancia **real en el espacio** —planta y desnivel, tomando el

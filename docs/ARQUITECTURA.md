@@ -128,6 +128,18 @@ comportaban todos antes de esta versión.
 La longitud es el recorrido en planta más el desnivel entre los dos extremos
 (`cableLength`), y quien la pide le suma la holgura.
 
+### Acometidas
+
+El punto de luz (`power_source`) y el punto de red (`network_source`) no salen del almacén:
+son parte del recinto, no material que se compre. Van con las figuras básicas en
+`BASIC_SHAPES` (`PlanPage.tsx`), que ahora puede fijar también `kind`, `color` y las tomas o
+puertos que ofrecen.
+
+Se dibujan como un círculo con su símbolo: `FeedSymbol` (`Editor2D.tsx`) lo resuelve por
+`kind`, en una caja de 1×1 que se escala al tamaño del objeto, así que vale para cualquier
+medida. En 3D el símbolo va en un `Html` flotando sobre el cilindro, porque un cilindro de
+40 cm no se distingue de nada más.
+
 ### Estilos del material
 
 `warehouse_item_variants` describe acabados del mismo objeto, cada uno con sus unidades y su

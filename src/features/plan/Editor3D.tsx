@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Grid, Html, Line, OrbitControls } from '@react-three/drei';
+import { Network, Zap } from 'lucide-react';
 import * as THREE from 'three';
 import type { Plan, PlanBackground, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
 import { cablePath } from '@/lib/geometry';
 import { snap as snapTo } from '@/lib/utils';
 import { usePlanStore } from './planStore';
-import type { CommitUpdate } from './Editor2D';
+import { isFeed, type CommitUpdate } from './Editor2D';
 import { GroundImage, TexturedMesh, type TextureSpec } from './TexturedMesh';
 
 /**
@@ -283,6 +284,33 @@ function Scene({
                 <edgesGeometry args={[new THREE.BoxGeometry(l * 1.12, h * 1.12, w * 1.12)]} />
                 <lineBasicMaterial color="#22d3ee" />
               </lineSegments>
+            ) : null}
+
+            {/* En 3D el punto de luz y el de red llevan su símbolo encima:
+                un cilindro de 40 cm no se distingue de nada más. */}
+            {isFeed(o.kind) ? (
+              <Html
+                position={[0, h / 2 + 0.12, 0]}
+                center
+                distanceFactor={10}
+                occlude={false}
+                style={{ pointerEvents: 'none' }}
+              >
+                <span
+                  className="grid size-7 place-items-center rounded-full border-2"
+                  style={{
+                    borderColor: o.color,
+                    color: o.color,
+                    background: 'color-mix(in oklab, var(--ef-canvas) 75%, transparent)',
+                  }}
+                >
+                  {o.kind === 'power_source' ? (
+                    <Zap className="size-4" />
+                  ) : (
+                    <Network className="size-4" />
+                  )}
+                </span>
+              </Html>
             ) : null}
 
             {showLabels && o.label ? (

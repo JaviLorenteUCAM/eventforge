@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Package, Plus, Shapes, Warehouse } from 'lucide-react';
+import { ChevronDown, Network, Package, Plus, Shapes, Warehouse, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Modal, SearchInput, Segmented, Select } from '@/components/ui';
 import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
@@ -27,7 +27,16 @@ export type DropPayload =
   | { source: 'catalog'; catalogId: string }
   | { source: 'shape'; shape: BasicShape };
 
-export type BasicShape = 'box' | 'square' | 'cylinder' | 'plane' | 'text' | 'line';
+export type BasicShape =
+  | 'box'
+  | 'square'
+  | 'cylinder'
+  | 'plane'
+  | 'text'
+  | 'line'
+  /** Acometidas de la sala: de aquí salen la corriente y la red. */
+  | 'power-point'
+  | 'network-point';
 
 /**
  * PANEL DE OBJETOS DEL EDITOR
@@ -204,6 +213,30 @@ export function ObjectLibrary({
           )
         ) : (
           <>
+            <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-dim">
+              Puntos principales
+            </p>
+            <div className="mb-1.5 grid grid-cols-2 gap-2">
+              <FeedButton
+                label="Punto de luz"
+                color="#f59e0b"
+                icon={<Zap className="size-4" />}
+                onClick={() => onAdd({ source: 'shape', shape: 'power-point' })}
+                onDragStart={(e) => startDrag(e, { source: 'shape', shape: 'power-point' })}
+              />
+              <FeedButton
+                label="Punto de red"
+                color="#22d3ee"
+                icon={<Network className="size-4" />}
+                onClick={() => onAdd({ source: 'shape', shape: 'network-point' })}
+                onDragStart={(e) => startDrag(e, { source: 'shape', shape: 'network-point' })}
+              />
+            </div>
+            <p className="mb-4 text-[11px] leading-relaxed text-dim">
+              De donde salen la corriente y la red. Lo que no llegue hasta ellos por cable se
+              marca como incidencia.
+            </p>
+
             <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-dim">
               Figuras básicas
             </p>
@@ -457,6 +490,42 @@ function ItemRow({
       >
         {fmtNum(available, 0)}/{fmtNum(total, 0)} {unit}
       </span>
+    </button>
+  );
+}
+
+/**
+ * Botón de una acometida. Se dibuja como se ve en el plano —un círculo con su
+ * símbolo— para que no haya que adivinar cuál es cuál.
+ */
+function FeedButton({
+  label,
+  color,
+  icon,
+  onClick,
+  onDragStart,
+}: {
+  label: string;
+  color: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+}) {
+  return (
+    <button
+      draggable
+      onDragStart={onDragStart}
+      onClick={onClick}
+      title={`${label} · pulsa para colocarlo o arrástralo al plano`}
+      className="flex cursor-grab flex-col items-center gap-1.5 rounded-xl border border-line bg-surface-2 py-2.5 transition-colors hover:border-line-strong active:cursor-grabbing"
+    >
+      <span
+        className="grid size-7 place-items-center rounded-full border-2"
+        style={{ borderColor: color, color, background: `${color}22` }}
+      >
+        {icon}
+      </span>
+      <span className="text-[10.5px] text-muted">{label}</span>
     </button>
   );
 }
