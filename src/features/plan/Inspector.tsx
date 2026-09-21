@@ -11,7 +11,15 @@ import {
   Select,
 } from '@/components/ui';
 import { useItemVariants, useWarehouseItems } from '@/data/warehouse';
-import type { Plan, PlanConnection, PlanIssue, PlanObject } from '@/lib/types';
+import {
+  CONNECTION_COLOR,
+  CONNECTION_DEFAULT_CABLE,
+  CONNECTION_LABEL,
+  type Plan,
+  type PlanConnection,
+  type PlanIssue,
+  type PlanObject,
+} from '@/lib/types';
 import { OBJECT_KINDS, OBJECT_KIND_LABEL, type ObjectKind } from '@/lib/types';
 import { cn, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
 import type { CommitUpdate } from './Editor2D';
@@ -294,7 +302,7 @@ function ObjectInspector({
           )}
         </Section>
 
-        <Section title="Electricidad y red">
+        <Section title="Electricidad, red y señal">
           <Checkbox
             label="Necesita corriente"
             checked={object.requires_power}
@@ -304,6 +312,11 @@ function ObjectInspector({
             label="Necesita red"
             checked={object.requires_network}
             onChange={(e) => set({ requires_network: e.target.checked }, 'Red')}
+          />
+          <Checkbox
+            label="Necesita señal (imagen)"
+            checked={object.requires_signal}
+            onChange={(e) => set({ requires_signal: e.target.checked }, 'Señal')}
           />
           <div className="grid grid-cols-3 gap-2">
             <Field label="Consumo">
@@ -325,6 +338,15 @@ function ObjectInspector({
               <NumberInput
                 value={object.port_count}
                 onChange={(v) => set({ port_count: Math.max(0, Math.round(v)) }, 'Puertos')}
+                step={1}
+              />
+            </Field>
+            <Field label="Salidas de señal" hint="Cámaras, ordenadores, splitters.">
+              <NumberInput
+                value={object.signal_out_count}
+                onChange={(v) =>
+                  set({ signal_out_count: Math.max(0, Math.round(v)) }, 'Salidas de señal')
+                }
                 step={1}
               />
             </Field>
@@ -492,8 +514,8 @@ function ConnectionInspector({
   return (
     <div className="flex h-full flex-col">
       <Section title="Cable">
-        <Badge color={connection.kind === 'power' ? '#f59e0b' : '#22d3ee'} dot>
-          {connection.kind === 'power' ? 'Eléctrico' : 'Red'}
+        <Badge color={CONNECTION_COLOR[connection.kind]} dot>
+          {CONNECTION_LABEL[connection.kind]}
         </Badge>
         <Field label="Tipo de cable">
           <Input
@@ -502,7 +524,7 @@ function ConnectionInspector({
             onBlur={() => {
               if (type !== connection.cable_type) onCommit({ cable_type: type });
             }}
-            placeholder={connection.kind === 'power' ? 'Manguera 3G2.5' : 'Cat6 U/UTP'}
+            placeholder={CONNECTION_DEFAULT_CABLE[connection.kind]}
             className="h-9"
           />
         </Field>

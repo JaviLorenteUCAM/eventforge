@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CONNECTION_COLOR } from '@/lib/types';
+import { dashFor, isCableTool, isFeed, toolKind } from './cables';
 import type {
   Plan,
   PlanBackground,
@@ -142,6 +144,7 @@ export function Editor2D({
     showLabels,
     showPower,
     showNetwork,
+    showSignal,
     showMeasures,
     snap,
     bgEdit,
@@ -278,7 +281,7 @@ export function Editor2D({
 
     // Cableado: se arrastra desde el aparato de origen hasta el de destino, y
     // el cable sigue el camino que dibuje la mano.
-    if (tool === 'power' || tool === 'network') {
+    if (isCableTool(tool)) {
       if (e.button !== 0) return;
       setLinkFrom(obj.id);
       onSelectConnection(null);
@@ -334,7 +337,7 @@ export function Editor2D({
 
     // Un clic en el vacío con una herramienta de cable cancela el cable a
     // medio hacer y no hace nada más.
-    if (tool === 'power' || tool === 'network') {
+    if (isCableTool(tool)) {
       setLinkFrom(null);
       return;
     }
@@ -789,6 +792,7 @@ export function Editor2D({
             {connections.map((c) => {
               if (c.kind === 'power' && !showPower) return null;
               if (c.kind === 'network' && !showNetwork) return null;
+              if (c.kind === 'signal' && !showSignal) return null;
               const a = objectById.get(c.from_object_id);
               const b = objectById.get(c.to_object_id);
               if (!a || !b) return null;
@@ -805,7 +809,7 @@ export function Editor2D({
                     fill="none"
                     stroke={c.color}
                     strokeWidth={(isSelected ? 3.5 : 2) * strokePx}
-                    strokeDasharray={c.kind === 'network' ? `${strokePx * 6} ${strokePx * 4}` : undefined}
+                    strokeDasharray={dashFor(c.kind, strokePx)}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={0.9}
@@ -1132,7 +1136,7 @@ export function Editor2D({
                 const from = objectById.get(drag.fromId);
                 if (!from) return null;
                 const over = drag.overId ? objectById.get(drag.overId) : null;
-                const color = tool === 'network' ? 'var(--ef-cyan)' : 'var(--ef-warn)';
+                const color = CONNECTION_COLOR[toolKind(tool)];
                 const pts = over
                   ? [...drag.points, { x: Number(over.x), y: Number(over.y) }]
                   : drag.points;
@@ -1150,7 +1154,7 @@ export function Editor2D({
                       strokeWidth={strokePx * 2.5}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeDasharray={tool === 'network' ? `${strokePx * 6} ${strokePx * 4}` : undefined}
+                      strokeDasharray={dashFor(toolKind(tool), strokePx)}
                     />
                     {over ? (
                       <rect
@@ -1274,17 +1278,12 @@ export function Editor2D({
   );
 }
 
-/** ¿Es una acometida: el punto de luz o el punto de red de la sala? */
-export function isFeed(kind: string) {
-  return kind === 'power_source' || kind === 'network_source';
-}
-
 /**
  * Símbolo de las acometidas, dibujado dentro del círculo.
  *
  * Los dos caben en una caja de 1×1 centrada en el origen, de modo que basta
- * con escalarla al tamaño del objeto. El trazo usa `vector-effect` para que no
- * engorde al acercar el zoom, igual que el resto del plano.
+ * con escalarla al tamaño del objeto: vale para un punto de 40 cm y para uno
+ * que se haya agrandado.
  */
 function FeedSymbol({
   kind,
@@ -1317,7 +1316,10 @@ function FeedSymbol({
       ) : (
         // Nodo central con tres ramas: el icono de red de toda la vida
         <g stroke={color} strokeWidth={w / k} strokeLinecap="round" fill={color}>
-          <path d="M0,-0.12 L0,-0.4 M0,0.12 L0,0.26 M-0.34,0.26 L0.34,0.26 M-0.34,0.26 L-0.34,0.42 M0.34,0.26 L0.34,0.42" fill="none" />
+          <path
+            d="M0,-0.12 L0,-0.4 M0,0.12 L0,0.26 M-0.34,0.26 L0.34,0.26 M-0.34,0.26 L-0.34,0.42 M0.34,0.26 L0.34,0.42"
+            fill="none"
+          />
           <rect x={-0.16} y={-0.12} width={0.32} height={0.24} rx={0.05} />
           <circle cx={0} cy={-0.44} r={0.09} />
           <circle cx={-0.34} cy={0.46} r={0.08} />

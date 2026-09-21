@@ -373,9 +373,11 @@ const EMPTY_FORM = {
   color: '#94a3b8',
   requires_power: false,
   requires_network: false,
+  requires_signal: false,
   power_w: 0,
   outlet_count: 0,
   port_count: 0,
+  signal_out_count: 0,
   texture_mode: 'atlas' as TextureMode,
   texture_scale: 1,
   texture_offset_x: 0,
@@ -431,9 +433,11 @@ export function ItemFormModal({
             color: item.color,
             requires_power: item.requires_power,
             requires_network: item.requires_network,
+            requires_signal: item.requires_signal,
             power_w: Number(item.power_w),
             outlet_count: Number(item.outlet_count),
             port_count: Number(item.port_count),
+            signal_out_count: Number(item.signal_out_count),
             texture_mode: item.texture_mode,
             texture_scale: Number(item.texture_scale),
             texture_offset_x: Number(item.texture_offset_x),
@@ -591,7 +595,7 @@ export function ItemFormModal({
 
         <div className="rounded-xl border border-line bg-surface-2 p-3.5 sm:col-span-2">
           <p className="mb-3 text-[12px] font-medium uppercase tracking-[0.1em] text-dim">
-            Electricidad y red
+            Electricidad, red y señal
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Checkbox
@@ -604,6 +608,12 @@ export function ItemFormModal({
               checked={form.requires_network}
               onChange={(e) => setForm({ ...form, requires_network: e.target.checked })}
             />
+            <Checkbox
+              label="Necesita señal (imagen)"
+              checked={form.requires_signal}
+              onChange={(e) => setForm({ ...form, requires_signal: e.target.checked })}
+            />
+            <div />
             <Field label="Consumo">
               <NumberInput
                 value={form.power_w}
@@ -627,6 +637,17 @@ export function ItemFormModal({
                 step={1}
               />
             </Field>
+            <Field
+              label="Salidas de señal que ofrece"
+              hint="Cámaras, ordenadores, splitters y matrices."
+            >
+              <NumberInput
+                value={form.signal_out_count}
+                onChange={(v) => setForm({ ...form, signal_out_count: Math.round(v) })}
+                step={1}
+              />
+            </Field>
+            <div />
           </div>
         </div>
 

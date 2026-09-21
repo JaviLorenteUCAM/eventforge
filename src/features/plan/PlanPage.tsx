@@ -22,6 +22,7 @@ import {
   Save,
   Scaling,
   MoreHorizontal,
+  MonitorPlay,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -43,6 +44,7 @@ import { useRealtime } from '@/data/realtime';
 import { qk } from '@/data/keys';
 import { analyzePlan, powerBudget } from '@/lib/issues';
 import { BUCKETS, resolveUrl, uploadBlob } from '@/lib/storage';
+import { CONNECTION_COLOR, CONNECTION_DEFAULT_CABLE, CONNECTION_LABEL } from '@/lib/types';
 import type {
   CatalogObject,
   Plan,
@@ -56,6 +58,7 @@ import type {
 import { cableLength, restingZ } from '@/lib/geometry';
 import { cn, fmtNum, round, uid } from '@/lib/utils';
 import { Editor2D, type CalibrationLine, type CommitUpdate } from './Editor2D';
+import { isCableTool, toolKind } from './cables';
 import { Editor3D } from './Editor3D';
 import { Inspector } from './Inspector';
 import { ObjectLibrary, type AddPayload, type BasicShape, type DropPayload } from './ObjectLibrary';
@@ -475,9 +478,11 @@ export function PlanPage() {
         shape: src.shape,
         requires_power: src.requires_power,
         requires_network: src.requires_network,
+        requires_signal: src.requires_signal,
         power_w: Number(src.power_w),
         outlet_count: src.outlet_count,
         port_count: src.port_count,
+        signal_out_count: src.signal_out_count,
       });
 
       const row =
@@ -588,7 +593,7 @@ export function PlanPage() {
       const b = objectList.find((o) => o.id === toId);
       if (!a || !b) return;
 
-      const kind = tool === 'network' ? 'network' : 'power';
+      const kind = toolKind(tool);
       const exists = connectionList.some(
         (c) =>
           c.kind === kind &&
@@ -612,13 +617,13 @@ export function PlanPage() {
           kind,
           from_object_id: fromId,
           to_object_id: toId,
-          cable_type: kind === 'power' ? 'Manguera 3G1.5' : 'Cat6 U/UTP',
+          cable_type: CONNECTION_DEFAULT_CABLE[kind],
           length_m: length,
-          color: kind === 'power' ? '#f59e0b' : '#22d3ee',
+          color: CONNECTION_COLOR[kind],
           waypoints,
         });
         history.push(entry);
-        toast.success(`Cable ${kind === 'power' ? 'eléctrico' : 'de red'} añadido (${length} m)`);
+        toast.success(`Cable de ${CONNECTION_LABEL[kind].toLowerCase()} añadido (${length} m)`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'No se ha podido crear el cable');
       }
@@ -836,6 +841,12 @@ export function PlanPage() {
               icon: <Network className="size-3.5" />,
             },
             {
+              value: 'signal',
+              title: 'Cable de señal: HDMI, DisplayPort, USB-C…',
+              label: <span className="hidden sm:inline">Señal</span>,
+              icon: <MonitorPlay className="size-3.5" />,
+            },
+            {
               value: 'measure',
               title: 'Regla: mide una distancia',
               label: <span className="hidden sm:inline">Regla</span>,
@@ -870,6 +881,13 @@ export function PlanPage() {
         </Toggle>
         <Toggle active={store.showNetwork} onClick={() => store.toggle('showNetwork')} label="Ver red">
           <Cable className="size-4" />
+        </Toggle>
+        <Toggle
+          active={store.showSignal}
+          onClick={() => store.toggle('showSignal')}
+          label="Ver cableado de señal"
+        >
+          <MonitorPlay className="size-4" />
         </Toggle>
         </div>
 
@@ -965,7 +983,7 @@ export function PlanPage() {
             Cancelar
           </button>
         </div>
-      ) : tool === 'power' || tool === 'network' ? (
+      ) : isCableTool(tool) ? (
         <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-[color-mix(in_oklab,var(--ef-warn)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
           <Cable className="size-3.5 shrink-0 text-warn" />
           <span className="text-ink">
@@ -973,8 +991,9 @@ export function PlanPage() {
             que ser recto.
           </span>
           <span className="text-dim">
-            ¿No hay de dónde tirar? En «Del evento» tienes el punto de{' '}
-            {tool === 'power' ? 'luz' : 'red'}, la acometida de la sala.
+            {tool === 'signal'
+              ? 'La imagen sale de las cámaras y los ordenadores: dales salidas de señal en su ficha.'
+              : `¿No hay de dónde tirar? En «Del evento» tienes el punto de ${tool === 'power' ? 'luz' : 'red'}, la acometida de la sala.`}
           </span>
         </div>
       ) : tool === 'measure' ? (
@@ -1255,6 +1274,9 @@ export function PlanPage() {
               </Toggle>
               <Toggle active={store.showNetwork} onClick={() => store.toggle('showNetwork')} label="Red">
                 <Cable className="size-4" />
+              </Toggle>
+              <Toggle active={store.showSignal} onClick={() => store.toggle('showSignal')} label="Señal">
+                <MonitorPlay className="size-4" />
               </Toggle>
             </div>
           </div>

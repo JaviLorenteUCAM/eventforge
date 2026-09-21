@@ -70,6 +70,9 @@ export const OBJECT_KINDS = [
   'network_router',
   'network_node',
   'network_source',
+  'signal_source',
+  'signal_splitter',
+  'signal_sink',
   'decor',
   'tool',
 ] as const;
@@ -86,12 +89,39 @@ export const OBJECT_KIND_LABEL: Record<ObjectKind, string> = {
   network_router: 'Router',
   network_node: 'Punto de red',
   network_source: 'Punto de red principal',
+  signal_source: 'Fuente de señal',
+  signal_splitter: 'Splitter / matriz',
+  signal_sink: 'Pantalla / monitor',
   decor: 'Decoración',
   tool: 'Herramienta',
 };
 
 export type Shape = 'box' | 'cylinder' | 'plane' | 'text' | 'line';
-export type ConnectionKind = 'power' | 'network';
+/**
+ * Los tres cableados de un montaje: corriente, red y SEÑAL (la imagen que va
+ * por HDMI, DisplayPort, USB-C o SDI de las cámaras y los ordenadores a las
+ * pantallas).
+ */
+export type ConnectionKind = 'power' | 'network' | 'signal';
+
+export const CONNECTION_LABEL: Record<ConnectionKind, string> = {
+  power: 'Eléctrico',
+  network: 'Red',
+  signal: 'Señal',
+};
+
+export const CONNECTION_COLOR: Record<ConnectionKind, string> = {
+  power: '#f59e0b',
+  network: '#22d3ee',
+  signal: '#a78bfa',
+};
+
+/** Cable que se propone por defecto al tirar uno de cada tipo. */
+export const CONNECTION_DEFAULT_CABLE: Record<ConnectionKind, string> = {
+  power: 'Manguera 3G1.5',
+  network: 'Cat6 U/UTP',
+  signal: 'HDMI 2.1',
+};
 export type Unit = 'ud' | 'm' | 'kg' | 'l' | 'pack';
 export type VehicleType = 'van' | 'truck' | 'trailer' | 'custom';
 
@@ -195,9 +225,11 @@ export interface CatalogObject {
   shape: 'box' | 'cylinder' | 'plane';
   requires_power: boolean;
   requires_network: boolean;
+  requires_signal: boolean;
   power_w: number;
   outlet_count: number;
   port_count: number;
+  signal_out_count: number;
   is_system: boolean;
   texture_path: string | null;
   texture_mode: TextureMode;
@@ -238,9 +270,11 @@ export interface WarehouseItem {
   color: string;
   requires_power: boolean;
   requires_network: boolean;
+  requires_signal: boolean;
   power_w: number;
   outlet_count: number;
   port_count: number;
+  signal_out_count: number;
   texture_path: string | null;
   texture_mode: TextureMode;
   texture_scale: number;
@@ -348,9 +382,13 @@ export interface PlanObject {
   shape: Shape;
   requires_power: boolean;
   requires_network: boolean;
+  /** Necesita recibir imagen: una tele, un monitor, un proyector. */
+  requires_signal: boolean;
   power_w: number;
   outlet_count: number;
   port_count: number;
+  /** Salidas de imagen que ofrece: una cámara, un PC, una matriz de 8. */
+  signal_out_count: number;
   locked: boolean;
   props: Record<string, unknown>;
   created_at: string;
@@ -460,7 +498,14 @@ export interface PlanIssue {
   id: string;
   objectId: string | null;
   severity: IssueSeverity;
-  kind: 'no_power' | 'no_network' | 'overloaded_strip' | 'overloaded_switch' | 'orphan_cable';
+  kind:
+    | 'no_power'
+    | 'no_network'
+    | 'no_signal'
+    | 'overloaded_strip'
+    | 'overloaded_switch'
+    | 'overloaded_signal'
+    | 'orphan_cable';
   title: string;
   detail: string;
 }

@@ -7,7 +7,8 @@ import type { Plan, PlanBackground, PlanConnection, PlanIssue, PlanObject } from
 import { cablePath } from '@/lib/geometry';
 import { snap as snapTo } from '@/lib/utils';
 import { usePlanStore } from './planStore';
-import { isFeed, type CommitUpdate } from './Editor2D';
+import type { CommitUpdate } from './Editor2D';
+import { isFeed } from './cables';
 import { GroundImage, TexturedMesh, type TextureSpec } from './TexturedMesh';
 
 /**
@@ -83,6 +84,7 @@ function Scene({
   const showLabels = usePlanStore((s) => s.showLabels);
   const showPower = usePlanStore((s) => s.showPower);
   const showNetwork = usePlanStore((s) => s.showNetwork);
+  const showSignal = usePlanStore((s) => s.showSignal);
   const snapOn = usePlanStore((s) => s.snap);
   const tool = usePlanStore((s) => s.tool);
   const linkFrom = usePlanStore((s) => s.linkFrom);
@@ -337,6 +339,7 @@ function Scene({
       {connections.map((c) => {
         if (c.kind === 'power' && !showPower) return null;
         if (c.kind === 'network' && !showNetwork) return null;
+        if (c.kind === 'signal' && !showSignal) return null;
         const a = objectById.get(c.from_object_id);
         const b = objectById.get(c.to_object_id);
         if (!a || !b) return null;
@@ -368,9 +371,9 @@ function Scene({
             key={c.id}
             points={points}
             color={c.color}
-            lineWidth={c.kind === 'network' ? 1.6 : 2.2}
-            dashed={c.kind === 'network'}
-            dashScale={8}
+            lineWidth={c.kind === 'power' ? 2.2 : 1.8}
+            dashed={c.kind !== 'power'}
+            dashScale={c.kind === 'signal' ? 4 : 8}
           />
         );
       })}

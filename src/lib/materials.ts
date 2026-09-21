@@ -7,6 +7,7 @@ import type {
   WarehouseItem,
   WarehouseItemVariant,
 } from './types';
+import { CONNECTION_DEFAULT_CABLE } from './types';
 import { normalize, round } from './utils';
 
 /**
@@ -163,9 +164,10 @@ export function computeMaterialNeeds(
   }
 
   // --- Cables (metros lineales) -------------------------------------------
+  // Los tres cableados —corriente, red y señal— suman sus metros igual: cada
+  // tipo de cable es una línea propia del listado.
   for (const c of connections) {
-    const label =
-      c.cable_type?.trim() || (c.kind === 'power' ? 'Cable eléctrico' : 'Cable Ethernet Cat6');
+    const label = c.cable_type?.trim() || CONNECTION_DEFAULT_CABLE[c.kind] || 'Cable';
     const key = `cable:${c.kind}:${normalize(label)}`;
     add(
       key,

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { PlanObject } from '@/lib/types';
 
-export type PlanTool = 'select' | 'power' | 'network' | 'calibrate' | 'measure';
+export type PlanTool = 'select' | 'power' | 'network' | 'signal' | 'calibrate' | 'measure';
 export type PlanMode = '2d' | '3d';
 
 interface PlanEditorState {
@@ -15,6 +15,7 @@ interface PlanEditorState {
   showLabels: boolean;
   showPower: boolean;
   showNetwork: boolean;
+  showSignal: boolean;
   showMeasures: boolean;
   snap: boolean;
 
@@ -35,7 +36,16 @@ interface PlanEditorState {
   toggleInSelection: (id: string) => void;
   clearSelection: () => void;
   setLinkFrom: (id: string | null) => void;
-  toggle: (key: 'showGrid' | 'showLabels' | 'showPower' | 'showNetwork' | 'showMeasures' | 'snap') => void;
+  toggle: (
+    key:
+      | 'showGrid'
+      | 'showLabels'
+      | 'showPower'
+      | 'showNetwork'
+      | 'showSignal'
+      | 'showMeasures'
+      | 'snap',
+  ) => void;
   setView: (v: { zoom?: number; panX?: number; panY?: number }) => void;
   zoomBy: (factor: number) => void;
   resetView: () => void;
@@ -55,6 +65,7 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   showLabels: true,
   showPower: true,
   showNetwork: true,
+  showSignal: true,
   showMeasures: false,
   snap: true,
 

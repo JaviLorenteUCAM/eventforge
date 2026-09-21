@@ -62,9 +62,11 @@ export function CatalogObjectModal({
     shape: 'box' as 'box' | 'cylinder' | 'plane',
     requires_power: false,
     requires_network: false,
+    requires_signal: false,
     power_w: 0,
     outlet_count: 0,
     port_count: 0,
+    signal_out_count: 0,
     texture_mode: 'atlas' as TextureMode,
     texture_scale: 1,
     texture_offset_x: 0,
@@ -89,9 +91,11 @@ export function CatalogObjectModal({
       shape: object?.shape ?? 'box',
       requires_power: object?.requires_power ?? false,
       requires_network: object?.requires_network ?? false,
+      requires_signal: object?.requires_signal ?? false,
       power_w: Number(object?.power_w ?? 0),
       outlet_count: Number(object?.outlet_count ?? 0),
       port_count: Number(object?.port_count ?? 0),
+      signal_out_count: Number(object?.signal_out_count ?? 0),
       texture_mode: object?.texture_mode ?? 'atlas',
       texture_scale: Number(object?.texture_scale ?? 1),
       texture_offset_x: Number(object?.texture_offset_x ?? 0),
@@ -225,7 +229,7 @@ export function CatalogObjectModal({
 
         <div className="rounded-xl border border-line bg-surface-2 p-3.5 sm:col-span-2">
           <p className="mb-3 text-[12px] font-medium uppercase tracking-[0.1em] text-dim">
-            Electricidad y red
+            Electricidad, red y señal
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Checkbox
@@ -238,6 +242,12 @@ export function CatalogObjectModal({
               checked={form.requires_network}
               onChange={(e) => setForm({ ...form, requires_network: e.target.checked })}
             />
+            <Checkbox
+              label="Necesita señal (imagen)"
+              checked={form.requires_signal}
+              onChange={(e) => setForm({ ...form, requires_signal: e.target.checked })}
+            />
+            <div />
             <Field label="Consumo">
               <NumberInput
                 value={form.power_w}
@@ -261,6 +271,17 @@ export function CatalogObjectModal({
                 step={1}
               />
             </Field>
+            <Field
+              label="Salidas de señal que ofrece"
+              hint="Cámaras, ordenadores, splitters y matrices."
+            >
+              <NumberInput
+                value={form.signal_out_count}
+                onChange={(v) => setForm({ ...form, signal_out_count: Math.round(v) })}
+                step={1}
+              />
+            </Field>
+            <div />
           </div>
         </div>
 

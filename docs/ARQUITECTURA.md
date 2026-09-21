@@ -128,6 +128,29 @@ comportaban todos antes de esta versión.
 La longitud es el recorrido en planta más el desnivel entre los dos extremos
 (`cableLength`), y quien la pide le suma la holgura.
 
+### Los tres cableados
+
+`plan_connections.kind` admite `power`, `network` y `signal`. El tercero es la imagen (HDMI,
+DisplayPort, USB-C, SDI) y se añadió en la migración `0009`.
+
+Para la señal NO hay tipos de objeto nuevos en el análisis: se deduce de dos columnas,
+`requires_signal` y `signal_out_count`.
+
+| Papel | Cómo se reconoce |
+|---|---|
+| Fuente | tiene salidas y no necesita recibir (cámara, reproductor) |
+| Repartidor | tiene salidas **y** necesita recibir (splitter, matriz) |
+| Consumidor | necesita recibir (tele, monitor) |
+
+Se eligió así en vez de crear `signal_source`/`signal_splitter` obligatorios porque el mismo
+aparato cambia de papel según cómo se use: un portátil es fuente en una sala y consumidor en
+otra. Los tipos existen en `ObjectKind` para etiquetar el almacén, pero el análisis no
+depende de ellos.
+
+Las reglas compartidas entre la barra, el lienzo 2D y el 3D (`isCableTool`, `toolKind`,
+`dashFor`, `isFeed`) viven en `features/plan/cables.ts`, fuera de los componentes: exportarlas
+desde un archivo con componentes rompe el recargado en caliente de Vite.
+
 ### Acometidas
 
 El punto de luz (`power_source`) y el punto de red (`network_source`) no salen del almacén:

@@ -11,6 +11,14 @@ import type { ObjectKind, PlanConnection, PlanIssue, PlanObject } from './types'
  * Red: un objeto con `requires_network` esta bien conectado si existe un camino
  * por cables de tipo "network" hasta un switch o un router.
  *
+ * Señal: un objeto con `requires_signal` (una tele, un monitor) esta bien si
+ * existe un camino por cables de tipo "signal" hasta una FUENTE. Aqui no hace
+ * falta un tipo de objeto especial: una fuente es cualquier aparato con salidas
+ * de imagen que no necesite recibirla (una camara, un reproductor), y un
+ * repartidor es el que tiene salidas Y ademas necesita recibir (un splitter,
+ * una matriz). Los repartidores propagan la imagen solo si ellos mismos la
+ * reciben, igual que las regletas con la corriente.
+ *
  * Ademas se avisa de regletas y switches con mas tomas ocupadas de las que
  * tienen fisicamente.
  */
@@ -24,7 +32,7 @@ const POWER_RELAYS: ObjectKind[] = ['power_strip'];
  */
 const NETWORK_SOURCES: ObjectKind[] = ['network_switch', 'network_router', 'network_source'];
 
-function buildAdjacency(connections: PlanConnection[], kind: 'power' | 'network') {
+function buildAdjacency(connections: PlanConnection[], kind: 'power' | 'network' | 'signal') {
   const adj = new Map<string, string[]>();
   const link = (a: string, b: string) => {
     const list = adj.get(a);
@@ -133,11 +141,56 @@ export function analyzePlan(objects: PlanObject[], connections: PlanConnection[]
     }
   }
 
+  // --------------------------------------------------------------- SEÑAL --
+  const signalAdj = buildAdjacency(connections, 'signal');
+  const hasOutputs = (o: PlanObject) => Number(o.signal_out_count) > 0;
+  const signalSources = objects.filter((o) => hasOutputs(o) && !o.requires_signal).map((o) => o.id);
+  const signalSet = reachableFrom(signalSources, signalAdj, (id) => {
+    const o = byId.get(id);
+    // Solo reparten los que tienen salidas: una tele no alimenta a otra tele.
+    return Boolean(o && hasOutputs(o));
+  });
+
+  for (const o of objects) {
+    if (!o.requires_signal) continue;
+    if (!signalSet.has(o.id)) {
+      issues.push({
+        id: `no_signal:${o.id}`,
+        objectId: o.id,
+        severity: 'error',
+        kind: 'no_signal',
+        title: `${nameOf(o)} — Sin señal`,
+        detail:
+          signalSources.length === 0
+            ? 'No hay ninguna fuente de imagen en el plano (una cámara, un reproductor, un ordenador con salida).'
+            : 'No hay ningún cable de señal que lleve imagen hasta este objeto.',
+      });
+    }
+  }
+
+  // Splitters y matrices que reparten sin recibir nada.
+  for (const o of objects) {
+    if (!hasOutputs(o) || !o.requires_signal) continue;
+    const hasChildren = (signalAdj.get(o.id) ?? []).length > 0;
+    if (hasChildren && !signalSet.has(o.id)) {
+      issues.push({
+        id: `no_signal_relay:${o.id}`,
+        objectId: o.id,
+        severity: 'error',
+        kind: 'no_signal',
+        title: `${nameOf(o)} — Reparte señal que no recibe`,
+        detail: 'Tiene pantallas colgando pero no le llega imagen de ninguna fuente.',
+      });
+    }
+  }
+
   // ----------------------------------------------------------- SATURACION --
   const powerDegree = new Map<string, number>();
   const netDegree = new Map<string, number>();
+  const signalDegree = new Map<string, number>();
   for (const c of connections) {
-    const target = c.kind === 'power' ? powerDegree : netDegree;
+    const target =
+      c.kind === 'power' ? powerDegree : c.kind === 'network' ? netDegree : signalDegree;
     target.set(c.from_object_id, (target.get(c.from_object_id) ?? 0) + 1);
     target.set(c.to_object_id, (target.get(c.to_object_id) ?? 0) + 1);
   }
@@ -170,6 +223,23 @@ export function analyzePlan(objects: PlanObject[], connections: PlanConnection[]
           detail: `Hay ${used} cables conectados y solo tiene ${o.port_count} puertos.`,
         });
       }
+    }
+  }
+
+  // Más pantallas colgando que salidas físicas.
+  for (const o of objects) {
+    if (Number(o.signal_out_count) <= 0) continue;
+    // Si el propio aparato recibe imagen, uno de sus cables es su entrada.
+    const used = (signalDegree.get(o.id) ?? 0) - (o.requires_signal ? 1 : 0);
+    if (used > Number(o.signal_out_count)) {
+      issues.push({
+        id: `overloaded_signal:${o.id}`,
+        objectId: o.id,
+        severity: 'warning',
+        kind: 'overloaded_signal',
+        title: `${nameOf(o)} — Salidas de señal insuficientes`,
+        detail: `Salen ${used} cables y solo tiene ${o.signal_out_count} salidas. Hará falta un splitter.`,
+      });
     }
   }
 

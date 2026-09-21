@@ -170,6 +170,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 6 | `supabase/migrations/0006_warehouse_first.sql` | El almacén pasa a ser el origen de los objetos: forma, color, textura y electricidad en la propia ficha |
 | 7 | `supabase/migrations/0007_cable_paths_and_feeds.sql` | Cables trazados a mano y punto de red principal |
 | 8 | `supabase/migrations/0008_item_variants.sql` | Estilos del material (manteles, dibujos) con sus propias unidades |
+| 9 | `supabase/migrations/0009_signal_cabling.sql` | Cableado de señal (HDMI, DisplayPort, USB-C) |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -569,7 +570,8 @@ eventforge/
 │       ├── 0005_backgrounds_scenarios_textures.sql
 │       ├── 0006_warehouse_first.sql # el almacén pasa a ser el origen de los objetos
 │       ├── 0007_cable_paths_and_feeds.sql
-│       └── 0008_item_variants.sql   # estilos del material
+│       ├── 0008_item_variants.sql   # estilos del material
+│       └── 0009_signal_cabling.sql  # cableado de señal
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -763,8 +765,18 @@ Al añadir un objeto eliges el **origen**:
 Al crear un objeto nuevo desde el editor se pregunta dónde guardarlo, porque es la diferencia
 entre llevar existencias o no.
 
-### Cableado, redes y conexiones
-Herramientas de cable **eléctrico** y de **red**. Se **dibuja**: mantienes pulsado sobre el
+### Cableado: corriente, red y señal
+Tres herramientas de cable:
+
+- ⚡ **Eléctrico** — la corriente.
+- 🌐 **Red** — Ethernet.
+- 📺 **Señal** — la imagen: HDMI, DisplayPort, USB-C o SDI. Es lo que lleva a las cámaras,
+  los monitores y los televisores lo que tienen que mostrar.
+
+Cada uno se dibuja con su trazo (continuo, punteado y de raya larga) para distinguirlos de
+un vistazo, y se pueden ocultar por separado desde la barra.
+
+Se **dibuja**: mantienes pulsado sobre el
 aparato de origen y llevas el cable hasta el de destino por donde quieras. No tiene que ser
 una recta —puede bordear la pared, rodear el escenario o serpentear—, y esos metros cuentan
 en el listado de material. También sigue valiendo el modo antiguo: clic en el origen, clic en
@@ -785,7 +797,18 @@ centro de cada objeto según su altura sobre el suelo— más un 20 % de holgura
 corregir a mano. Cada cable guarda tipo, longitud, color, origen y destino, y **suma metros al listado
 de material**.
 
-Las regletas tienen número de tomas; los switches, número de puertos.
+Las regletas tienen número de tomas; los switches, número de puertos; y los aparatos de
+imagen, **salidas de señal**.
+
+Para la señal no hace falta un tipo de objeto especial, basta con dos datos en la ficha:
+
+- **Necesita señal** — una tele, un monitor, un proyector.
+- **Salidas de señal que ofrece** — una cámara, un ordenador, un splitter de 8.
+
+De ahí sale todo: una **fuente** es lo que tiene salidas y no necesita recibir nada; un
+**repartidor** (splitter, matriz) tiene salidas y además recibe; y un **consumidor** solo
+recibe. Los repartidores propagan la imagen solo si a ellos les llega, igual que las regletas
+con la corriente.
 
 ### Detección automática de incidencias
 El sistema recorre el grafo de conexiones y avisa de:
@@ -794,6 +817,11 @@ El sistema recorre el grafo de conexiones y avisa de:
   fuente (cuadro o toma de pared). Las regletas propagan la corriente solo si ellas mismas
   están alimentadas.
 - ⚠️ **Sin red** — un aparato que necesita red y no llega a ningún switch o router.
+- ⚠️ **Sin señal** — una pantalla que necesita imagen y no tiene camino hasta una fuente.
+- ⚠️ **Reparte señal que no recibe** — un splitter con pantallas colgando al que no le llega
+  imagen.
+- ⚠️ **Salidas de señal insuficientes** — salen más cables de los que el aparato tiene
+  salidas: hará falta un splitter.
 - ⚠️ **Regleta sin alimentar** — tiene aparatos colgando pero no recibe corriente.
 - ⚠️ **Tomas o puertos insuficientes** — más conexiones que tomas físicas.
 - ⚠️ **Cable huérfano** — uno de sus extremos ya no existe.
@@ -811,7 +839,9 @@ independiente.
 
 ### Listado de material
 Se genera solo a partir del plano: agrupa los objetos por ficha de almacén y los cables por
-tipo, y lo cruza con las existencias mostrando **necesario / en almacén / faltan**.
+tipo, y lo cruza con las existencias mostrando **necesario / en almacén / faltan**. Los tres
+cableados suman sus metros igual: cada tipo de cable —manguera, Cat6, HDMI— es una línea
+propia del listado.
 
 Arriba del todo aparece **«Falta material»**: la lista concreta de lo que hay que conseguir,
 con cuántas unidades necesitas, cuántas tienes y cuántas te faltan. Exportable a CSV
