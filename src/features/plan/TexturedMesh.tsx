@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 import { boxFaceUvs } from '@/lib/textureAtlas';
+import { silhouetteFromImage } from '@/lib/silhouette';
 import type { TextureMode } from '@/lib/types';
 
 export interface TextureSpec {
@@ -142,6 +143,98 @@ function applyTile(t: THREE.Texture, spec: TextureSpec) {
   t.rotation = (spec.rotation * Math.PI) / 180;
 }
 
+/**
+ * GEOMETRÍA EXTRUIDA A PARTIR DE LA IMAGEN
+ *
+ * En modo silueta la imagen no se pinta sobre una caja: se lee su contorno y se
+ * le da fondo. Lo sólido de la imagen se convierte en volumen macizo y lo
+ * transparente en aire, así que un soporte de televisión sale como dos patas
+ * unidas por su base y el hueco lo es por los cuatro costados, en lugar de ser
+ * una carcasa con los laterales enteros.
+ *
+ * Devuelve null si no se puede leer el contorno; el llamante vuelve entonces a
+ * la caja de siempre.
+ */
+function useSilhouetteGeometry(
+  map: THREE.Texture | null,
+  spec: TextureSpec | undefined,
+  length: number,
+  width: number,
+  height: number,
+): THREE.ExtrudeGeometry | null {
+  const geometry = useMemo(() => {
+    if (!map || spec?.mode !== 'silhouette') return null;
+    const image = map.image as (CanvasImageSource & { width: number; height: number }) | undefined;
+    if (!image?.width) return null;
+
+    const sil = silhouetteFromImage(image, {
+      keyColor: spec.keyColor,
+      keyTolerance: spec.keyTolerance,
+    });
+    if (!sil || sil.outers.length === 0) return null;
+
+    // La silueta viene en 0..1; se lleva a metros y se centra en el origen.
+    const toShape = (points: { x: number; y: number }[]) => {
+      const path = new THREE.Shape();
+      points.forEach((p, i) => {
+        const x = (p.x - 0.5) * length;
+        const y = (p.y - 0.5) * height;
+        if (i === 0) path.moveTo(x, y);
+        else path.lineTo(x, y);
+      });
+      path.closePath();
+      return path;
+    };
+
+    const shapes = sil.outers.map((outer, i) => {
+      const shape = toShape(outer);
+      shape.holes = sil.holes[i].map((hole) => {
+        const p = new THREE.Path();
+        hole.forEach((q, j) => {
+          const x = (q.x - 0.5) * length;
+          const y = (q.y - 0.5) * height;
+          if (j === 0) p.moveTo(x, y);
+          else p.lineTo(x, y);
+        });
+        p.closePath();
+        return p;
+      });
+      return shape;
+    });
+
+    const depth = Math.max(0.01, width);
+    const geo = new THREE.ExtrudeGeometry(shapes, {
+      depth,
+      bevelEnabled: false,
+      steps: 1,
+      // Las UV por defecto vienen en METROS; se rehacen abajo en 0..1.
+      UVGenerator: {
+        generateTopUV(_g, vertices, a, b, c) {
+          const uv = (i: number) =>
+            new THREE.Vector2(
+              vertices[i * 3] / length + 0.5,
+              vertices[i * 3 + 1] / height + 0.5,
+            );
+          return [uv(a), uv(b), uv(c)];
+        },
+        generateSideWallUV() {
+          // Los cantos llevan color liso, no textura: son la superficie del
+          // corte y con la imagen estirada quedarían embarrados.
+          const z = new THREE.Vector2(0, 0);
+          return [z, z.clone(), z.clone(), z.clone()];
+        },
+      },
+    });
+    // La extrusión crece hacia +Z; se centra para que el objeto siga estando
+    // donde dice su posición.
+    geo.translate(0, 0, -depth / 2);
+    return geo;
+  }, [map, spec, length, width, height]);
+
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  return geometry;
+}
+
 interface Props extends Omit<ThreeElements['mesh'], 'ref' | 'material' | 'children' | 'args'> {
   shape: 'box' | 'cylinder' | 'plane' | 'text' | 'line';
   length: number;
@@ -178,6 +271,7 @@ export function TexturedMesh({
 }: Props) {
   const map = useImageTexture(texture?.url, texture?.keyColor, texture?.keyTolerance);
   const isBox = shape !== 'cylinder';
+  const silhouette = useSilhouetteGeometry(map, texture, length, width, height);
 
   const materials = useMemo(() => {
     const base = {
@@ -197,6 +291,19 @@ export function TexturedMesh({
 
     if (!map || !texture) {
       return new THREE.MeshStandardMaterial({ ...base, color: new THREE.Color(color) });
+    }
+
+    // Silueta: dos materiales, uno para las caras (con la imagen) y otro para
+    // los cantos del corte (color liso). ExtrudeGeometry los separa en grupos.
+    if (silhouette) {
+      const t = map.clone();
+      t.needsUpdate = true;
+      t.wrapS = THREE.ClampToEdgeWrapping;
+      t.wrapT = THREE.ClampToEdgeWrapping;
+      return [
+        new THREE.MeshStandardMaterial({ ...base, map: t }),
+        new THREE.MeshStandardMaterial({ ...base, color: new THREE.Color(color) }),
+      ];
     }
 
     if (texture.mode === 'tile' || !isBox) {
@@ -231,7 +338,7 @@ export function TexturedMesh({
       t.repeat.set(uv.repeat[0] - insetU * 2, uv.repeat[1] - insetV * 2);
       return new THREE.MeshStandardMaterial({ ...base, map: t });
     });
-  }, [map, texture, isBox, color, emissive, emissiveIntensity, transparent, opacity]);
+  }, [map, texture, isBox, silhouette, color, emissive, emissiveIntensity, transparent, opacity]);
 
   // Los materiales y sus texturas clonadas se liberan al recrearse.
   useEffect(
@@ -250,8 +357,14 @@ export function TexturedMesh({
   // no existe mientras mesh.material siga siendo un material suelto, y los seis
   // materiales del atlas se perderían en silencio.
   return (
-    <mesh castShadow receiveShadow material={materials} {...meshProps}>
-      {shape === 'cylinder' ? (
+    <mesh
+      castShadow
+      receiveShadow
+      material={materials}
+      geometry={silhouette ?? undefined}
+      {...meshProps}
+    >
+      {silhouette ? null : shape === 'cylinder' ? (
         <cylinderGeometry args={[length / 2, length / 2, Math.max(0.01, height), 28]} />
       ) : (
         <boxGeometry args={[length, Math.max(0.01, height), width]} />

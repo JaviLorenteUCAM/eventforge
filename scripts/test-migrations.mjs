@@ -86,6 +86,7 @@ const FILES = [
   '0009_signal_cabling.sql',
   '0010_object_angles.sql',
   '0011_texture_transparency.sql',
+  '0012_silhouette_mode.sql',
 ];
 let allOk = true;
 

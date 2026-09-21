@@ -234,6 +234,57 @@ export async function generateBoxTemplate(
  * (perímetro × alto). Las tapas no se pueden desplegar en la misma imagen sin
  * deformarlas, así que en cilindros la textura se aplica envolviendo el lateral.
  */
+/**
+ * Plantilla del modo silueta: la VISTA DE FRENTE a secas, con el contorno
+ * marcado y el fondo a cuadros para que se vea qué parte es transparente.
+ *
+ * Es mucho más fácil de dibujar que el despliegue en cruz: se pinta el objeto
+ * de frente y se borra (o se pinta del color clave) lo que sea aire.
+ */
+export async function generateFrontTemplate(
+  name: string,
+  lengthM: number,
+  heightM: number,
+): Promise<Blob> {
+  const px = 1024;
+  const ratio = Math.max(0.05, heightM) / Math.max(0.05, lengthM);
+  const w = px;
+  const h = Math.max(64, Math.round(px * ratio));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No se ha podido crear la plantilla');
+
+  // Fondo a cuadros: recuerda que lo que quede así será aire.
+  const tile = 32;
+  for (let y = 0; y < h; y += tile) {
+    for (let x = 0; x < w; x += tile) {
+      ctx.fillStyle = (x / tile + y / tile) % 2 === 0 ? '#e5e7eb' : '#cbd5e1';
+      ctx.fillRect(x, y, tile, tile);
+    }
+  }
+
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, w - 4, h - 4);
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `${Math.round(h * 0.06)}px system-ui, sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillText(`${name} · vista de frente`, 16, 14);
+  ctx.fillText(
+    `${lengthM.toFixed(2)} × ${heightM.toFixed(2)} m — borra lo que sea aire`,
+    16,
+    14 + Math.round(h * 0.08),
+  );
+
+  return await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Error al generar la plantilla'))), 'image/png'),
+  );
+}
+
 export async function generateCylinderTemplate(
   name: string,
   diameterM: number,

@@ -173,6 +173,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 9 | `supabase/migrations/0009_signal_cabling.sql` | Cableado de señal (HDMI, DisplayPort, USB-C) |
 | 10 | `supabase/migrations/0010_object_angles.sql` | Girar los objetos en los tres ejes |
 | 11 | `supabase/migrations/0011_texture_transparency.sql` | Color transparente en las texturas |
+| 12 | `supabase/migrations/0012_silhouette_mode.sql` | Modo silueta: la imagen es la forma del objeto |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -575,7 +576,8 @@ eventforge/
 │       ├── 0008_item_variants.sql   # estilos del material
 │       ├── 0009_signal_cabling.sql  # cableado de señal
 │       ├── 0010_object_angles.sql   # giro en los tres ejes
-│       └── 0011_texture_transparency.sql
+│       ├── 0011_texture_transparency.sql
+│       └── 0012_silhouette_mode.sql   # la imagen es la forma del objeto
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -764,6 +766,24 @@ caja. Para que el hueco sea hueco de verdad hay dos caminos:
 El **margen** controla cuánto se parecen los píxeles que también caen. Súbelo si quedan restos
 de color por los bordes (pasa al guardar en JPEG o al reescalar) y bájalo si se está comiendo
 parte del dibujo.
+
+#### Modo silueta: que el objeto SEA el recorte
+
+Recortar la textura abre el hueco, pero el objeto sigue siendo una caja: al vaciar el frente
+y el trasero de un soporte de televisión los laterales siguen siendo rectángulos enteros, las
+dos patas no se unen por los lados y el conjunto queda flotando.
+
+El modo **Silueta** cambia el enfoque. La imagen deja de pintarse sobre una caja: se lee su
+contorno y se le da fondo. Lo que en el dibujo es sólido se convierte en volumen macizo con la
+profundidad del objeto, y lo transparente en aire. El soporte sale con sus dos patas unidas
+por la base, y el hueco lo es por los cuatro costados.
+
+Con este modo la plantilla pasa a ser la **vista de frente** a secas —mucho más fácil de
+dibujar que el despliegue en cruz— y los cantos del corte se pintan del color del objeto,
+como una pieza cortada de verdad.
+
+Es el modo para soportes, estructuras, aros, letras sueltas y cualquier cosa que no sea un
+bloque macizo.
 
 ### Orientación: girar un objeto en los tres ejes
 

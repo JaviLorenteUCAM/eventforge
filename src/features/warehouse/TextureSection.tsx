@@ -3,7 +3,11 @@ import { Grid2x2, ImageIcon, Pipette, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, ColorPicker, Field, NumberInput, Select } from '@/components/ui';
 import { BUCKETS, removeFile, resolveUrl, uploadFile } from '@/lib/storage';
-import { generateBoxTemplate, generateCylinderTemplate } from '@/lib/textureAtlas';
+import {
+  generateBoxTemplate,
+  generateCylinderTemplate,
+  generateFrontTemplate,
+} from '@/lib/textureAtlas';
 import { cn, downloadBlob, fmtNum, slugify } from '@/lib/utils';
 import type { TextureMode } from '@/lib/types';
 
@@ -231,9 +235,12 @@ export function TextureSection({
 
   async function exportTemplate() {
     try {
-      const blob = isCylinder
-        ? await generateCylinderTemplate(name, lengthM, heightM)
-        : await generateBoxTemplate(name, lengthM, widthM, heightM);
+      const blob =
+        mode === 'silhouette'
+          ? await generateFrontTemplate(name, lengthM, heightM)
+          : isCylinder
+            ? await generateCylinderTemplate(name, lengthM, heightM)
+            : await generateBoxTemplate(name, lengthM, widthM, heightM);
       downloadBlob(blob, `plantilla-${slugify(name) || 'objeto'}.png`);
       toast.success('Plantilla descargada. Edítala respetando los recuadros y vuelve a subirla.');
     } catch (err) {
@@ -351,8 +358,20 @@ export function TextureSection({
             >
               <option value="atlas">Despliegue por caras (plantilla)</option>
               <option value="tile">Mosaico repetido en todas las caras</option>
+              <option value="silhouette">Silueta: la imagen es la forma del objeto</option>
             </Select>
           </Field>
+
+          {mode === 'silhouette' ? (
+            <p className="rounded-lg border border-[color-mix(in_oklab,var(--ef-accent)_35%,transparent)] bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-2.5 py-2 text-[11.5px] leading-relaxed text-ink">
+              La imagen deja de pintarse sobre una caja: se lee su contorno y se le da fondo.
+              Lo que en el dibujo es sólido se convierte en volumen macizo y lo transparente en
+              aire, así que un soporte sale con sus dos patas unidas por la base y el hueco lo
+              es por los cuatro costados, sin laterales flotando. Los cantos del corte se
+              pintan del color del objeto. La plantilla pasa a ser la <strong>vista de
+              frente</strong>, que es mucho más fácil de dibujar.
+            </p>
+          ) : null}
 
           {mode === 'tile' || isCylinder ? (
             <div className="grid grid-cols-2 gap-2">

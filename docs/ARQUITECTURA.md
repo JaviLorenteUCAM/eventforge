@@ -128,6 +128,34 @@ comportaban todos antes de esta versión.
 La longitud es el recorrido en planta más el desnivel entre los dos extremos
 (`cableLength`), y quien la pide le suma la holgura.
 
+### Modo silueta
+
+Recortar la textura no basta cuando el objeto no es un bloque: la caja sigue teniendo seis
+caras y los laterales quedan flotando. En modo `silhouette` no se textura una caja, se
+construye la geometría a partir de la imagen.
+
+La cadena está en `lib/silhouette.ts` y es toda de cálculo puro:
+
+1. `maskFromImage()` — imagen → máscara binaria (1 = material). Reduce a 256 px de lado: el
+   contorno no mejora con más resolución y el trazado es cuadrático. Cuenta como aire tanto
+   el alfa bajo como el color clave, así que funciona igual con un PNG recortado que con un
+   dibujo con el hueco en magenta.
+2. `traceContours()` — recorrido del borde con la regla de la mano derecha (*moore boundary
+   tracing*): se avanza pegado al material girando siempre hacia el mismo lado.
+3. `simplifyPath()` (el mismo Douglas-Peucker que usan los cables) quita el dentado.
+4. Se clasifican los contornos por área y contención: los que caen dentro de otro son huecos.
+   Solo un nivel de anidamiento; un hueco dentro de un hueco volvería a ser material, pero eso
+   no pasa dibujando soportes.
+
+En `TexturedMesh` el resultado se pasa a `THREE.Shape` + `ExtrudeGeometry` con la profundidad
+del objeto, centrada en el origen. Dos detalles:
+
+- **UV propias.** El generador por defecto de `ExtrudeGeometry` devuelve las UV en METROS; hay
+  que reescribirlas a 0..1 o la textura sale a escala aleatoria.
+- **Dos materiales.** `ExtrudeGeometry` separa las tapas de los cantos en dos grupos: las tapas
+  llevan la imagen y los cantos, color liso. Estirar la textura por el canto del corte queda
+  embarrado.
+
 ### Huecos en las texturas
 
 Dos mecanismos, un solo resultado:

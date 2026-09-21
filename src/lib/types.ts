@@ -246,7 +246,14 @@ export interface CatalogObject {
   updated_at: string;
 }
 
-export type TextureMode = 'atlas' | 'tile';
+/**
+ * Cómo se usa la imagen de un objeto:
+ *   atlas      -> despliegue en cruz, una cara por recuadro
+ *   tile       -> mosaico que se repite en todas las caras
+ *   silhouette -> la imagen es la vista de frente y se extruye: lo sólido pasa
+ *                 a ser volumen y lo transparente, aire
+ */
+export type TextureMode = 'atlas' | 'tile' | 'silhouette';
 
 /**
  * Material del almacén. Desde la versión 0006 es TAMBIÉN la definición del
