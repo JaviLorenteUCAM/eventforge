@@ -206,3 +206,91 @@ export function connectionLength(
   if (!a || !b) return null;
   return cableLength(a, b, c.waypoints ?? []);
 }
+
+/**
+ * REACOMODAR UN CABLE CUANDO SE MUEVEN SUS EXTREMOS
+ *
+ * Los extremos de un cable son los objetos, así que al mover una mesa el cable
+ * la sigue solo. El problema es el trazo dibujado a mano: sus puntos se quedan
+ * donde estaban y el cable acaba dando un rodeo absurdo.
+ *
+ * Aquí cada punto intermedio se desplaza según LO CERCA QUE ESTÉ de cada
+ * extremo, medido sobre el propio recorrido: los de junto a la mesa que se
+ * mueve la acompañan enteros, los del otro lado no se inmutan y los del medio
+ * hacen la transición. Si se mueven los dos extremos a la vez —al arrastrar
+ * una selección— el trazo entero viaja con ellos, que es lo que se espera.
+ */
+/**
+ * Mueve los codos cuando los DOS extremos del cable han girado lo mismo, como
+ * al girar una fila de mesas con su cableado: el trazo acompaña al conjunto en
+ * bloque en vez de deformarse. El giro se expresa respecto al extremo de
+ * partida, así que vale igual sea cual sea el centro de la rotación.
+ */
+export function rigidWaypoints(
+  points: Waypoint[],
+  fromBefore: Waypoint,
+  fromAfter: Waypoint,
+  degrees: number,
+): Waypoint[] {
+  if (points.length === 0) return points;
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return points.map((p) => {
+    const dx = p.x - fromBefore.x;
+    const dy = p.y - fromBefore.y;
+    return {
+      x: round(fromAfter.x + dx * cos - dy * sin, 3),
+      y: round(fromAfter.y + dx * sin + dy * cos, 3),
+    };
+  });
+}
+
+export function reflowWaypoints(
+  points: Waypoint[],
+  from: Waypoint,
+  to: Waypoint,
+  deltaFrom: Waypoint,
+  deltaTo: Waypoint,
+): Waypoint[] {
+  if (points.length === 0) return points;
+
+  const path = [from, ...points, to];
+
+  // Distancia acumulada a lo largo del recorrido: parametrizar por índice
+  // deformaría los tramos largos igual que los cortos.
+  const acc: number[] = [0];
+  for (let i = 1; i < path.length; i++) {
+    acc.push(acc[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
+  }
+  const total = acc[acc.length - 1];
+
+  return points.map((p, i) => {
+    const t = total > 0 ? acc[i + 1] / total : (i + 1) / (points.length + 1);
+    return {
+      x: round(p.x + deltaFrom.x * (1 - t) + deltaTo.x * t, 3),
+      y: round(p.y + deltaFrom.y * (1 - t) + deltaTo.y * t, 3),
+    };
+  });
+}
+
+/** Centro de una selección: el punto alrededor del que gira el grupo. */
+export function centroidOf(objects: PlanObject[]): Waypoint {
+  if (objects.length === 0) return { x: 0, y: 0 };
+  const sum = objects.reduce(
+    (acc, o) => ({ x: acc.x + Number(o.x), y: acc.y + Number(o.y) }),
+    { x: 0, y: 0 },
+  );
+  return { x: sum.x / objects.length, y: sum.y / objects.length };
+}
+
+/** Gira un punto alrededor de otro. Ángulo en grados. */
+export function rotateAround(p: Waypoint, center: Waypoint, degrees: number): Waypoint {
+  const rad = (degrees * Math.PI) / 180;
+  const dx = p.x - center.x;
+  const dy = p.y - center.y;
+  return {
+    x: round(center.x + dx * Math.cos(rad) - dy * Math.sin(rad), 3),
+    y: round(center.y + dx * Math.sin(rad) + dy * Math.cos(rad), 3),
+  };
+}

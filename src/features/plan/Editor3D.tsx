@@ -521,7 +521,6 @@ function Scene({
               <Html
                 position={[0, realH / 2 + 0.12, 0]}
                 center
-                distanceFactor={10}
                 occlude={false}
                 style={{ pointerEvents: "none" }}
               >
@@ -547,12 +546,11 @@ function Scene({
               <Html
                 position={[0, realH / 2 + 0.22, 0]}
                 center
-                distanceFactor={14}
                 occlude={false}
                 style={{ pointerEvents: "none" }}
               >
                 <span
-                  className="whitespace-nowrap rounded-md border border-line bg-[color-mix(in_oklab,var(--ef-canvas)_82%,transparent)] px-1.5 py-0.5 text-[11px] text-ink"
+                  className="whitespace-nowrap rounded border border-line bg-[color-mix(in_oklab,var(--ef-canvas)_82%,transparent)] px-1 py-px text-[10px] leading-tight text-ink"
                   style={{ backdropFilter: "blur(4px)" }}
                 >
                   {o.label}

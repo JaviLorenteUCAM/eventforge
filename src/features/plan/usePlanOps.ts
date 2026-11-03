@@ -177,6 +177,57 @@ export function usePlanOps(planId: string | undefined) {
     [refresh],
   );
 
+  /** Añade varios cables de golpe (al duplicar una selección). */
+  const addConnections = useCallback(
+    async (rows: Record<string, unknown>[]): Promise<HistoryEntry> => {
+      const ids = rows.map((r) => r.id as string);
+      const insert = async () => {
+        const { error } = await supabase.from('plan_connections').insert(rows);
+        if (error) throw new ApiError(error);
+        refresh();
+      };
+      const remove = async () => {
+        const { error } = await supabase.from('plan_connections').delete().in('id', ids);
+        if (error) throw new ApiError(error);
+        refresh();
+      };
+      await insert();
+      return { label: 'Añadir cables', undo: remove, redo: insert };
+    },
+    [refresh],
+  );
+
+  /**
+   * Cambia varios cables a la vez y devuelve una sola entrada de historial.
+   * Se usa al mover objetos: sus cables se recolocan en el mismo paso, de modo
+   * que al deshacer vuelven juntos.
+   */
+  const updateConnections = useCallback(
+    async (
+      updates: { id: string; patch: Partial<PlanConnection>; previous: Partial<PlanConnection> }[],
+      label = 'Recolocar cables',
+    ): Promise<HistoryEntry> => {
+      const apply = async (list: { id: string; values: Partial<PlanConnection> }[]) => {
+        for (const u of list) {
+          const { error } = await supabase
+            .from('plan_connections')
+            .update(u.values)
+            .eq('id', u.id);
+          if (error) throw new ApiError(error);
+        }
+        refresh();
+      };
+
+      await apply(updates.map((u) => ({ id: u.id, values: u.patch })));
+      return {
+        label,
+        undo: () => apply(updates.map((u) => ({ id: u.id, values: u.previous }))),
+        redo: () => apply(updates.map((u) => ({ id: u.id, values: u.patch }))),
+      };
+    },
+    [refresh],
+  );
+
   const updateConnection = useCallback(
     async (
       connection: PlanConnection,
@@ -208,7 +259,9 @@ export function usePlanOps(planId: string | undefined) {
     updateObjects,
     addConnection,
     deleteConnection,
+    addConnections,
     updateConnection,
+    updateConnections,
     refresh,
   };
 }

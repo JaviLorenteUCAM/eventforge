@@ -697,10 +697,31 @@ alrededor de lo que estás mirando y no de un punto perdido a lo lejos.
 Para plantarse delante de algo de golpe, **doble clic** sobre el objeto (o **F** con él
 seleccionado): la cámara se coloca a una distancia acorde a su tamaño.
 
+Los **nombres de los objetos** y los símbolos de los puntos de luz y de red mantienen su tamaño
+en pantalla: antes crecían con el zoom y, al acercarse a una alfombra, el rótulo tapaba media
+pantalla.
+
 Los objetos son entidades reales de la base de datos: se seleccionan, mueven, rotan (tirador
 dedicado, con ajuste a 15°), redimensionan (tirador de esquina), duplican, bloquean y
 eliminan. Cada uno guarda largo, ancho, alto, altura sobre el suelo, color, forma, tipo,
 consumo y número de tomas o puertos.
+
+**Girar varios a la vez.** Con más de un objeto seleccionado aparece una caja de conjunto con
+su propio tirador: el grupo gira como un bloque alrededor de su centro, así que una fila de
+mesas montada al milímetro sigue montada igual después de girarla en diagonal. Mientras giras
+se ve cuántos grados llevas. También con la tecla **R** (y **Mayús + R** al revés), de 15 en
+15, y con los botones de ±15° y ±90° del inspector. Lo que esté bloqueado se queda quieto.
+
+**Duplicar se lleva el cableado.** Al duplicar una selección se copian también los cables que
+van de un objeto seleccionado a otro: duplicar un puesto entero —PC, monitor, regleta y sus
+cables— deja el segundo puesto ya cableado. Los cables que salían fuera de la selección no se
+copian, porque no se sabría a qué deberían engancharse.
+
+**Los cables se recolocan solos.** Al mover o girar algo, el trazo dibujado a mano acompaña a
+sus extremos en lugar de quedarse atrás dando un rodeo, y los metros se vuelven a calcular con
+su 20 % de holgura, de modo que el listado de material sigue cuadrando. Si el movimiento ha
+sido un giro de conjunto, el cable gira entero con él sin deformarse. Todo entra en el mismo
+paso de deshacer: una sola vuelta atrás devuelve los objetos y sus cables.
 
 El **deshacer** está basado en comandos: cada acción sabe cómo revertirse escribiendo en la
 base de datos, de modo que al deshacer el resto del equipo también ve el resultado.

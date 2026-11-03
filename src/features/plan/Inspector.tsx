@@ -21,7 +21,7 @@ import {
   type PlanObject,
 } from '@/lib/types';
 import { OBJECT_KINDS, OBJECT_KIND_LABEL, type ObjectKind } from '@/lib/types';
-import { footprintOf } from '@/lib/geometry';
+import { centroidOf, footprintOf, rotateAround } from '@/lib/geometry';
 import { cn, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
 import type { CommitUpdate } from './Editor2D';
 
@@ -71,7 +71,12 @@ export function Inspector({
 
   if (selected.length > 1) {
     return (
-      <MultiInspector count={selected.length} objects={selected} onDelete={onDelete} onDuplicate={onDuplicate} />
+      <MultiInspector
+        objects={selected}
+        onCommit={onCommit}
+        onDelete={onDelete}
+        onDuplicate={onDuplicate}
+      />
     );
   }
 
@@ -539,20 +544,45 @@ function VariantPicker({
 }
 
 function MultiInspector({
-  count,
   objects,
+  onCommit,
   onDelete,
   onDuplicate,
 }: {
-  count: number;
   objects: PlanObject[];
+  onCommit: (updates: CommitUpdate[], label: string) => void;
   onDelete: () => void;
   onDuplicate: () => void;
 }) {
+  const count = objects.length;
   const volume = objects.reduce(
     (s, o) => s + volumeOf(Number(o.length_m), Number(o.width_m), Number(o.height_m)),
     0,
   );
+
+  const movable = objects.filter((o) => !o.locked);
+
+  /**
+   * Gira el conjunto como un bloque: cada objeto gira sobre sí mismo Y se
+   * desplaza alrededor del centro de la selección. Es el mismo cálculo que el
+   * tirador del plano, aquí con ángulos exactos para cuando hace falta girar
+   * una fila de mesas justo un cuarto de vuelta.
+   */
+  const rotateGroup = (degrees: number) => {
+    if (movable.length === 0) return;
+    const c = centroidOf(movable);
+    onCommit(
+      movable.map((o) => {
+        const p = rotateAround({ x: Number(o.x), y: Number(o.y) }, c, degrees);
+        return {
+          id: o.id,
+          patch: { x: p.x, y: p.y, rotation: wrap(Number(o.rotation) + degrees) },
+          previous: { x: Number(o.x), y: Number(o.y), rotation: Number(o.rotation) },
+        };
+      }),
+      movable.length > 1 ? `Rotar ${movable.length} objetos` : 'Rotar objeto',
+    );
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -560,7 +590,32 @@ function MultiInspector({
         <p className="text-[13px] text-ink">{count} objetos seleccionados</p>
         <p className="num text-[12px] text-muted">Volumen {fmtM3(volume)}</p>
         <p className="text-[12px] text-dim">
-          Arrastra para moverlos juntos. Usa Supr para eliminarlos o Ctrl+D para duplicarlos.
+          Arrastra para moverlos juntos o usa el tirador de arriba para girarlos. Supr los elimina y
+          Ctrl+D los duplica con sus cables.
+        </p>
+      </Section>
+
+      <Section title="Girar el conjunto">
+        <div className="grid grid-cols-4 gap-1.5">
+          {[-90, -15, 15, 90].map((d) => (
+            <Button
+              key={d}
+              size="sm"
+              variant="outline"
+              className="justify-center px-0"
+              disabled={movable.length === 0}
+              onClick={() => rotateGroup(d)}
+            >
+              <span className="num">
+                {d > 0 ? '+' : '−'}
+                {Math.abs(d)}°
+              </span>
+            </Button>
+          ))}
+        </div>
+        <p className="text-[12px] text-dim">
+          Giran alrededor del centro de la selección, así que las piezas no pierden su colocación
+          entre ellas. Los objetos bloqueados se quedan quietos.
         </p>
       </Section>
 
@@ -709,7 +764,8 @@ function PlanInspector({ plan, onChange }: { plan: Plan; onChange: (patch: Parti
           <Shortcut keys="3D · rueda pulsada" action="Desplazar la vista" />
           <Shortcut keys="3D · doble clic" action="Acercarse a ese objeto" />
           <Shortcut keys="3D · F" action="Acercarse a lo seleccionado" />
-          <Shortcut keys="Ctrl + D" action="Duplicar" />
+          <Shortcut keys="R / Mayús + R" action="Girar la selección 15°" />
+          <Shortcut keys="Ctrl + D" action="Duplicar (con sus cables)" />
           <Shortcut keys="Ctrl + C / V" action="Copiar / pegar" />
           <Shortcut keys="Ctrl + Z / Y" action="Deshacer / rehacer" />
           <Shortcut keys="Supr" action="Eliminar" />

@@ -11,10 +11,12 @@ import type {
 } from '@/lib/types';
 import {
   cablePath,
+  centroidOf,
   footprintOf,
   objectAt,
   pathD,
   restingZ,
+  rotateAround,
   simplifyPath,
 } from '@/lib/geometry';
 import { clamp, fmtNum, round, snap as snapTo } from '@/lib/utils';
@@ -76,7 +78,12 @@ interface Props {
 type DragState =
   | { kind: 'move'; ids: string[]; startX: number; startY: number; dx: number; dy: number }
   | { kind: 'resize'; id: string; startX: number; startY: number; length: number; width: number }
-  | { kind: 'rotate'; id: string; rotation: number }
+  /**
+   * Giro de la selección. Funciona igual con uno que con veinte objetos: cada
+   * uno gira sobre sí mismo Y alrededor del centro del grupo, que para un solo
+   * objeto es su propio centro.
+   */
+  | { kind: 'rotate'; ids: string[]; cx: number; cy: number; start: number; delta: number }
   | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
   | { kind: 'bg-move'; id: string; startX: number; startY: number; dx: number; dy: number }
@@ -454,11 +461,10 @@ export function Editor2D({
     }
 
     if (drag.kind === 'rotate') {
-      const obj = objectById.get(drag.id);
-      if (!obj) return;
-      const angle = (Math.atan2(p.y - Number(obj.y), p.x - Number(obj.x)) * 180) / Math.PI + 90;
-      const rotation = e.shiftKey ? angle : Math.round(angle / 15) * 15;
-      setDrag({ ...drag, rotation: ((rotation % 360) + 360) % 360 });
+      const angle = (Math.atan2(p.y - drag.cy, p.x - drag.cx) * 180) / Math.PI;
+      // A saltos de 15°, que es como se alinea todo en una sala. Mayús libera.
+      const raw = angle - drag.start;
+      setDrag({ ...drag, delta: e.shiftKey ? raw : Math.round(raw / 15) * 15 });
       return;
     }
 
@@ -569,18 +575,30 @@ export function Editor2D({
       }
     }
 
-    if (drag.kind === 'rotate') {
-      const o = objectById.get(drag.id);
-      if (o && Number(o.rotation) !== drag.rotation) {
+    if (drag.kind === 'rotate' && drag.delta !== 0) {
+      const updates: CommitUpdate[] = [];
+      for (const id of drag.ids) {
+        const o = objectById.get(id);
+        if (!o || o.locked) continue;
+        const p2 = rotateAround(
+          { x: Number(o.x), y: Number(o.y) },
+          { x: drag.cx, y: drag.cy },
+          drag.delta,
+        );
+        updates.push({
+          id,
+          patch: {
+            x: p2.x,
+            y: p2.y,
+            rotation: (((Number(o.rotation) + drag.delta) % 360) + 360) % 360,
+          },
+          previous: { x: Number(o.x), y: Number(o.y), rotation: Number(o.rotation) },
+        });
+      }
+      if (updates.length) {
         onCommit(
-          [
-            {
-              id: drag.id,
-              patch: { rotation: drag.rotation },
-              previous: { rotation: Number(o.rotation) },
-            },
-          ],
-          'Rotar objeto',
+          updates,
+          updates.length > 1 ? `Rotar ${updates.length} objetos` : 'Rotar objeto',
         );
       }
     }
@@ -644,8 +662,18 @@ export function Editor2D({
       if (drag.kind === 'resize' && drag.id === o.id) {
         return { ...o, length_m: drag.length, width_m: drag.width };
       }
-      if (drag.kind === 'rotate' && drag.id === o.id) {
-        return { ...o, rotation: drag.rotation };
+      if (drag.kind === 'rotate' && drag.ids.includes(o.id)) {
+        const p = rotateAround(
+          { x: Number(o.x), y: Number(o.y) },
+          { x: drag.cx, y: drag.cy },
+          drag.delta,
+        );
+        return {
+          ...o,
+          x: p.x,
+          y: p.y,
+          rotation: (((Number(o.rotation) + drag.delta) % 360) + 360) % 360,
+        };
       }
       return o;
     },
@@ -655,6 +683,47 @@ export function Editor2D({
   const selectedObjects = objects.filter((o) => selection.includes(o.id)).map(liveObject);
   const single = selectedObjects.length === 1 ? selectedObjects[0] : null;
   const strokePx = 1 / zoom;
+
+  /** Caja que envuelve a toda la selección, para girarla como un bloque. */
+  const selectionBox =
+    selectedObjects.length > 1
+      ? selectedObjects.reduce(
+          (box, o) => {
+            const f = footprintOf(o);
+            // Las cuatro esquinas ya giradas: una mesa en diagonal ocupa más
+            // ancho del que dice su ficha.
+            const rad = (Number(o.rotation) * Math.PI) / 180;
+            const ex =
+              (Math.abs(Math.cos(rad)) * f.length + Math.abs(Math.sin(rad)) * f.width) / 2;
+            const ey =
+              (Math.abs(Math.sin(rad)) * f.length + Math.abs(Math.cos(rad)) * f.width) / 2;
+            return {
+              minX: Math.min(box.minX, Number(o.x) - ex),
+              minY: Math.min(box.minY, Number(o.y) - ey),
+              maxX: Math.max(box.maxX, Number(o.x) + ex),
+              maxY: Math.max(box.maxY, Number(o.y) + ey),
+            };
+          },
+          { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+        )
+      : null;
+
+  /** Arranca el giro: el centro es el del grupo (el del objeto si va solo). */
+  function startRotate(e: React.PointerEvent, group: PlanObject[]) {
+    const usable = group.filter((o) => !o.locked);
+    if (usable.length === 0) return;
+    const c = centroidOf(usable);
+    const p = toWorld(e.clientX, e.clientY);
+    setDrag({
+      kind: 'rotate',
+      ids: usable.map((o) => o.id),
+      cx: c.x,
+      cy: c.y,
+      start: (Math.atan2(p.y - c.y, p.x - c.x) * 180) / Math.PI,
+      delta: 0,
+    });
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  }
 
   return (
     <div
@@ -1042,9 +1111,55 @@ export function Editor2D({
                 className="cursor-grab"
                 onPointerDown={(e) => {
                   e.stopPropagation();
-                  setDrag({ kind: 'rotate', id: single.id, rotation: Number(single.rotation) });
+                  startRotate(e, [single]);
                 }}
               />
+            </g>
+          ) : null}
+
+          {/* Selección múltiple: caja de conjunto y tirador para girarla entera */}
+          {selectionBox ? (
+            <g>
+              <rect
+                x={selectionBox.minX}
+                y={selectionBox.minY}
+                width={selectionBox.maxX - selectionBox.minX}
+                height={selectionBox.maxY - selectionBox.minY}
+                fill="none"
+                stroke="var(--ef-accent-soft)"
+                strokeWidth={strokePx * 1.5}
+                strokeDasharray={`${strokePx * 6} ${strokePx * 4}`}
+                pointerEvents="none"
+              />
+              <line
+                x1={(selectionBox.minX + selectionBox.maxX) / 2}
+                y1={selectionBox.minY}
+                x2={(selectionBox.minX + selectionBox.maxX) / 2}
+                y2={selectionBox.minY - 24 / zoom}
+                stroke="var(--ef-accent-soft)"
+                strokeWidth={strokePx * 1.5}
+                pointerEvents="none"
+              />
+              <circle
+                cx={(selectionBox.minX + selectionBox.maxX) / 2}
+                cy={selectionBox.minY - 24 / zoom}
+                r={6 / zoom}
+                fill="var(--ef-cyan)"
+                stroke="var(--ef-canvas)"
+                strokeWidth={strokePx * 1.5}
+                className="cursor-grab"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  startRotate(e, selectedObjects);
+                }}
+              />
+            </g>
+          ) : null}
+
+          {/* Cuánto se lleva girado, tanto de uno solo como del conjunto */}
+          {drag?.kind === 'rotate' && drag.delta !== 0 ? (
+            <g transform={`translate(${drag.cx},${drag.cy})`}>
+              <MeasureChip zoom={zoom} rotation={0} accent text={`${fmtNum(drag.delta, 0)}°`} />
             </g>
           ) : null}
 

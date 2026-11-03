@@ -56,7 +56,14 @@ import type {
   WarehouseItemVariant,
   Waypoint,
 } from '@/lib/types';
-import { cableLength, restingZ } from '@/lib/geometry';
+import {
+  cableLength,
+  centroidOf,
+  reflowWaypoints,
+  restingZ,
+  rigidWaypoints,
+  rotateAround,
+} from '@/lib/geometry';
 import { cn, fmtNum, round, uid } from '@/lib/utils';
 import { Editor2D, type CalibrationLine, type CommitUpdate } from './Editor2D';
 import { isCableTool, toolKind } from './cables';
@@ -416,16 +423,123 @@ export function PlanPage() {
   );
 
   // --- Acciones -------------------------------------------------------------
+  /**
+   * CABLES QUE SE RECOLOCAN SOLOS
+   *
+   * Al mover un objeto su cable le sigue, porque los extremos son los propios
+   * objetos. Lo que se quedaba atrás era el trazo dibujado a mano —el cable
+   * daba un rodeo absurdo— y los metros guardados, que seguían siendo los de
+   * antes y llegaban mal al listado de material.
+   *
+   * Aquí, después de cada movimiento, se arrastran los puntos del trazo con el
+   * extremo que se ha movido y se vuelve a calcular la longitud con su 20 % de
+   * holgura. Devuelve la entrada de historial para encadenarla con la del
+   * movimiento: al deshacer vuelven juntos.
+   */
+  const reflowCables = useCallback(
+    async (updates: CommitUpdate[]) => {
+      // Solo interesan los que han cambiado de sitio o de orientación.
+      const moves = new Map<string, { dx: number; dy: number; drot: number }>();
+      for (const u of updates) {
+        const dx = Number(u.patch.x ?? NaN) - Number(u.previous.x ?? NaN);
+        const dy = Number(u.patch.y ?? NaN) - Number(u.previous.y ?? NaN);
+        const drot = Number(u.patch.rotation ?? NaN) - Number(u.previous.rotation ?? NaN);
+        if (Number.isFinite(dx) || Number.isFinite(dy)) {
+          moves.set(u.id, {
+            dx: Number.isFinite(dx) ? dx : 0,
+            dy: Number.isFinite(dy) ? dy : 0,
+            drot: Number.isFinite(drot) ? drot : 0,
+          });
+        }
+      }
+      if (moves.size === 0) return null;
+
+      // Posiciones YA actualizadas, para medir la nueva longitud.
+      const byId = new Map(
+        objectList.map((o) => {
+          const m = moves.get(o.id);
+          return [
+            o.id,
+            m ? { ...o, x: Number(o.x) + m.dx, y: Number(o.y) + m.dy } : o,
+          ] as const;
+        }),
+      );
+
+      const patches: {
+        id: string;
+        patch: Partial<PlanConnection>;
+        previous: Partial<PlanConnection>;
+      }[] = [];
+
+      for (const c of connectionList) {
+        const da = moves.get(c.from_object_id);
+        const db = moves.get(c.to_object_id);
+        if (!da && !db) continue;
+
+        const a = byId.get(c.from_object_id);
+        const b = byId.get(c.to_object_id);
+        if (!a || !b) continue;
+
+        const beforeA = { x: Number(a.x) - (da?.dx ?? 0), y: Number(a.y) - (da?.dy ?? 0) };
+        const beforeB = { x: Number(b.x) - (db?.dx ?? 0), y: Number(b.y) - (db?.dy ?? 0) };
+
+        // Si los dos extremos han girado lo mismo es un giro de conjunto y el
+        // cable va con ellos tal cual, sin deformarse. Si no, cada codo se
+        // reparte entre lo que se haya movido cada punta.
+        const sameTurn =
+          da && db && Math.abs(da.drot - db.drot) < 0.001 && Math.abs(da.drot) > 0.001;
+
+        const waypoints = sameTurn
+          ? rigidWaypoints(c.waypoints ?? [], beforeA, { x: Number(a.x), y: Number(a.y) }, da.drot)
+          : reflowWaypoints(
+              c.waypoints ?? [],
+              beforeA,
+              beforeB,
+              da ? { x: da.dx, y: da.dy } : { x: 0, y: 0 },
+              db ? { x: db.dx, y: db.dy } : { x: 0, y: 0 },
+            );
+
+        const length = Math.max(1, Math.ceil(cableLength(a, b, waypoints) * 1.2));
+        if (length === Number(c.length_m) && waypoints === c.waypoints) continue;
+
+        patches.push({
+          id: c.id,
+          patch: { waypoints, length_m: length },
+          previous: { waypoints: c.waypoints ?? [], length_m: Number(c.length_m) },
+        });
+      }
+
+      if (patches.length === 0) return null;
+      return await ops.updateConnections(patches);
+    },
+    [objectList, connectionList, ops],
+  );
+
   const commit = useCallback(
     async (updates: CommitUpdate[], label: string) => {
       try {
         const entry = await ops.updateObjects(updates, label);
-        history.push(entry);
+        const cables = await reflowCables(updates);
+        history.push(
+          cables
+            ? {
+                label,
+                undo: async () => {
+                  await cables.undo();
+                  await entry.undo();
+                },
+                redo: async () => {
+                  await entry.redo();
+                  await cables.redo();
+                },
+              }
+            : entry,
+        );
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'No se ha podido guardar el cambio');
       }
     },
-    [ops, history],
+    [ops, history, reflowCables],
   );
 
   /** Centro visible del lienzo, en metros. */
@@ -574,23 +688,74 @@ export function PlanPage() {
     }
   }, [selectedObjects, connectionList, ops, history, clearSelection]);
 
+  /**
+   * Duplicar la selección copia también EL CABLEADO INTERNO: si se duplican un
+   * PC y su regleta, la copia viene con su cable puesto. Los cables que salían
+   * fuera de la selección no se copian, porque no se sabría a qué deberían
+   * engancharse.
+   */
   const duplicateObjects = useCallback(
     async (source: PlanObject[]) => {
       if (!plan || !source.length) return;
+
+      const OFFSET = 0.4;
+      const idMap = new Map<string, string>();
       const rows = source.map((o) => {
         const { id: _id, created_at: _c, updated_at: _u, ...rest } = o;
-        return { ...rest, id: uid(), x: Number(o.x) + 0.4, y: Number(o.y) + 0.4 };
+        const newId = uid();
+        idMap.set(o.id, newId);
+        return { ...rest, id: newId, x: Number(o.x) + OFFSET, y: Number(o.y) + OFFSET };
       });
+
+      const cables = connectionList
+        .filter((c) => idMap.has(c.from_object_id) && idMap.has(c.to_object_id))
+        .map((c) => {
+          const { id: _id, created_at: _c, updated_at: _u, ...rest } = c;
+          return {
+            ...rest,
+            id: uid(),
+            from_object_id: idMap.get(c.from_object_id)!,
+            to_object_id: idMap.get(c.to_object_id)!,
+            // El trazo se mueve con la copia, si no se quedaría al lado.
+            waypoints: (c.waypoints ?? []).map((p) => ({
+              x: round(Number(p.x) + OFFSET, 3),
+              y: round(Number(p.y) + OFFSET, 3),
+            })),
+          };
+        });
+
       try {
         const { ids, history: entry } = await ops.addObjects(rows);
-        history.push(entry);
+        const cableEntry = cables.length
+          ? await ops.addConnections(cables as unknown as Record<string, unknown>[])
+          : null;
+
+        history.push(
+          cableEntry
+            ? {
+                label: entry.label,
+                undo: async () => {
+                  await cableEntry.undo();
+                  await entry.undo();
+                },
+                redo: async () => {
+                  await entry.redo();
+                  await cableEntry.redo();
+                },
+              }
+            : entry,
+        );
         setSelection(ids);
-        toast.success(rows.length > 1 ? `${rows.length} objetos duplicados` : 'Objeto duplicado');
+        toast.success(
+          `${rows.length > 1 ? `${rows.length} objetos duplicados` : 'Objeto duplicado'}${
+            cables.length ? ` · ${cables.length} ${cables.length === 1 ? 'cable' : 'cables'}` : ''
+          }`,
+        );
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'No se ha podido duplicar');
       }
     },
-    [plan, ops, history, setSelection],
+    [plan, connectionList, ops, history, setSelection],
   );
 
   const handleLink = useCallback(
@@ -751,6 +916,32 @@ export function PlanPage() {
         setSelectedConnectionId(null);
         setLinkFrom(null);
         setTool('select');
+        return;
+      }
+      // R gira la selección un cuarto de vuelta larga (15°) alrededor de su
+      // centro; con Mayús, al revés. Es lo mismo que hace el tirador, pero sin
+      // soltar el teclado cuando se está colocando una sala entera.
+      if (e.key.toLowerCase() === 'r' && !mod && selectedObjects.length) {
+        const movable = selectedObjects.filter((o) => !o.locked);
+        if (!movable.length) return;
+        e.preventDefault();
+        const degrees = e.shiftKey ? -15 : 15;
+        const c = centroidOf(movable);
+        void commit(
+          movable.map((o) => {
+            const p = rotateAround({ x: Number(o.x), y: Number(o.y) }, c, degrees);
+            return {
+              id: o.id,
+              patch: {
+                x: p.x,
+                y: p.y,
+                rotation: (((Number(o.rotation) + degrees) % 360) + 360) % 360,
+              },
+              previous: { x: Number(o.x), y: Number(o.y), rotation: Number(o.rotation) },
+            };
+          }),
+          movable.length > 1 ? `Rotar ${movable.length} objetos` : 'Rotar objeto',
+        );
         return;
       }
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedObjects.length) {
