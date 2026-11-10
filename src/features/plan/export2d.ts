@@ -765,8 +765,14 @@ function wrap(text: string, max: number, maxLines: number): string[] {
 // ---------------------------------------------------------------------------
 
 type MaterialEntry =
-  | { group: string; color?: string; cont?: boolean; total?: boolean }
-  | { need: MaterialNeed; inZone?: boolean; short?: boolean };
+  | { group: string; color?: string; cont?: boolean }
+  | { need: MaterialNeed; inZone?: boolean; short?: boolean }
+  /** Hueco en blanco antes de un apartado. */
+  | { spacer: true }
+  /** Apartado destacado (el total del evento), en una banda oscura. */
+  | { section: string; sub?: string; cont?: boolean }
+  /** Cabecera de columnas repetida al empezar un apartado. */
+  | { colhead: true };
 
 /**
  * El listado de material del evento, en las hojas que hagan falta, con el
@@ -808,8 +814,22 @@ export function materialPages(d: Drawing): string[] {
         entries.push({ need, inZone: true, short: shortKeys.has(need.key) });
       }
     }
-    entries.push({ group: 'Total del evento', total: true });
-    for (const need of byCategory([...needs])) entries.push({ need });
+    // El total va aparte: un hueco, una banda oscura con su título, sus
+    // columnas y el material por categorías, como el listado normal, para que
+    // no parezca una zona más.
+    entries.push(
+      { spacer: true },
+      { section: 'Total del evento', sub: 'Todo el material del plano, con lo que hay en el almacén' },
+      { colhead: true },
+    );
+    const totalGroups = new Map<string, MaterialNeed[]>();
+    for (const m of needs) totalGroups.set(groupOf(m), [...(totalGroups.get(groupOf(m)) ?? []), m]);
+    for (const [group, list] of [...totalGroups.entries()].sort(
+      (a, b) => Number(a[0] === 'Cableado') - Number(b[0] === 'Cableado') || a[0].localeCompare(b[0], 'es'),
+    )) {
+      entries.push({ group });
+      for (const need of list.sort((a, b) => a.name.localeCompare(b.name, 'es'))) entries.push({ need });
+    }
   } else {
     const groups = new Map<string, MaterialNeed[]>();
     for (const m of needs) groups.set(groupOf(m), [...(groups.get(groupOf(m)) ?? []), m]);
@@ -824,17 +844,38 @@ export function materialPages(d: Drawing): string[] {
 
   const rowH = 5.4;
   const top = y + 26;
-  const perPage = Math.max(5, Math.floor((y + h - 8 - top) / rowH));
+  const sectionH = rowH * 2.2;
+  const heightOf = (e: MaterialEntry) => ('section' in e ? sectionH : 'spacer' in e ? rowH * 1.2 : rowH);
+  const avail = y + h - 8 - top;
   const pagesEntries: MaterialEntry[][] = [];
   let current: MaterialEntry[] = [];
-  let lastGroup: Extract<MaterialEntry, { group: string }> = { group: '' };
-  for (const e of entries) {
-    if ('group' in e) lastGroup = e;
-    if (current.length >= perPage) {
-      pagesEntries.push(current);
-      current = 'group' in e ? [] : [{ ...lastGroup, cont: true }];
-    }
+  let used = 0;
+  let lastGroup: Extract<MaterialEntry, { group: string }> | null = null;
+  let lastSection: Extract<MaterialEntry, { section: string }> | null = null;
+  const push = (e: MaterialEntry) => {
     current.push(e);
+    used += heightOf(e);
+  };
+  for (const e of entries) {
+    if ('section' in e) {
+      lastSection = e;
+      lastGroup = null;
+    }
+    if ('group' in e) lastGroup = e;
+    // Un apartado no empieza al pie de una hoja: con él van al menos unas filas.
+    const need = 'spacer' in e ? 0 : 'section' in e ? sectionH + rowH * 5 : heightOf(e);
+    if (current.length && used + need > avail) {
+      pagesEntries.push(current);
+      current = [];
+      used = 0;
+      if ('spacer' in e) continue; // al empezar hoja no hace falta el hueco
+      // Al seguir en otra hoja, se repite de qué apartado y grupo es.
+      if (!('section' in e) && !('colhead' in e) && lastSection) {
+        push({ ...lastSection, cont: true }); // las columnas ya van arriba de la hoja
+      }
+      if (!('group' in e) && !('section' in e) && !('colhead' in e) && lastGroup) push({ ...lastGroup, cont: true });
+    }
+    push(e);
   }
   if (current.length) pagesEntries.push(current);
 
@@ -874,9 +915,44 @@ export function materialPages(d: Drawing): string[] {
 
     let cy = top;
     for (const e of pageEntries) {
+      if ('spacer' in e) {
+        cy += heightOf(e);
+        continue;
+      }
+      if ('section' in e) {
+        // Raya gruesa encima y banda oscura con el título en blanco.
+        out.push(
+          `<path d="M${x + 4} ${n(cy)}H${x + w - 4}" stroke="#000" stroke-width="0.6"/>`,
+          `<rect x="${x + 4}" y="${n(cy + 0.9)}" width="${w - 8}" height="${n(sectionH - 0.9)}" fill="#1f1f1f"/>`,
+          `<text x="${col.name}" y="${n(cy + sectionH * 0.55)}" font-size="3.4" font-weight="bold" letter-spacing="0.4" fill="#fff">${esc(e.section.toUpperCase())}${e.cont ? ' (cont.)' : ''}</text>`,
+        );
+        if (e.sub && !e.cont) {
+          out.push(
+            `<text x="${col.name}" y="${n(cy + sectionH * 0.86)}" font-size="2" fill="#cfcfcf">${esc(e.sub)}</text>`,
+          );
+        }
+        cy += sectionH;
+        continue;
+      }
+      if ('colhead' in e) {
+        const by = n(cy + rowH * 0.7);
+        out.push(
+          `<text x="${col.name}" y="${by}" font-size="2" fill="#555">MATERIAL</text>`,
+          `<text x="${col.need}" y="${by}" font-size="2" fill="#555" text-anchor="end">NECESARIO</text>`,
+        );
+        if (mark) {
+          out.push(
+            `<text x="${col.stock}" y="${by}" font-size="2" fill="#555" text-anchor="end">EN ALMACÉN</text>`,
+            `<text x="${col.miss}" y="${by}" font-size="2" fill="#555" text-anchor="end">FALTA</text>`,
+          );
+        }
+        out.push(`<path d="M${x + 4} ${n(cy + rowH - 0.4)}H${x + w - 4}" stroke="#000" stroke-width="0.2"/>`);
+        cy += rowH;
+        continue;
+      }
       if ('group' in e) {
         out.push(
-          `<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="${e.total ? '#e4e4e4' : '#f1f1f1'}"/>`,
+          `<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#f1f1f1"/>`,
           e.color
             ? `<rect x="${col.name}" y="${n(cy + 1.3)}" width="5" height="${rowH - 2.6}" fill="${e.color}" fill-opacity="0.3" stroke="${e.color}" stroke-width="0.35"/>`
             : '',
