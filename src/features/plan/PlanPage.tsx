@@ -25,6 +25,9 @@ import {
   MonitorPlay,
   Usb,
   Landmark,
+  PaintBucket,
+  SquareDashed,
+  Type,
   FileDown,
   VectorSquare,
   SlidersHorizontal,
@@ -1276,6 +1279,27 @@ export function PlanPage() {
         >
           <Landmark className="size-4" />
         </Toggle>
+        <Toggle
+          active={store.showZoneFill}
+          onClick={() => store.toggle('showZoneFill')}
+          label="Zonas: color de relleno"
+        >
+          <PaintBucket className="size-4" />
+        </Toggle>
+        <Toggle
+          active={store.showZoneOutline}
+          onClick={() => store.toggle('showZoneOutline')}
+          label="Zonas: borde (delimitación)"
+        >
+          <SquareDashed className="size-4" />
+        </Toggle>
+        <Toggle
+          active={store.showZoneLabels}
+          onClick={() => store.toggle('showZoneLabels')}
+          label="Zonas: nombre y descripción"
+        >
+          <Type className="size-4" />
+        </Toggle>
         </div>
 
         <div className="mx-1 h-6 w-px bg-[var(--ef-line)]" />
@@ -1733,6 +1757,15 @@ export function PlanPage() {
                 label="Recinto 3D"
               >
                 <Landmark className="size-4" />
+              </Toggle>
+              <Toggle active={store.showZoneFill} onClick={() => store.toggle('showZoneFill')} label="Relleno de zonas">
+                <PaintBucket className="size-4" />
+              </Toggle>
+              <Toggle active={store.showZoneOutline} onClick={() => store.toggle('showZoneOutline')} label="Borde de zonas">
+                <SquareDashed className="size-4" />
+              </Toggle>
+              <Toggle active={store.showZoneLabels} onClick={() => store.toggle('showZoneLabels')} label="Nombre de zonas">
+                <Type className="size-4" />
               </Toggle>
             </div>
           </div>

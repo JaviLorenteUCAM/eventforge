@@ -28,6 +28,10 @@ interface PlanEditorState {
   showUsb: boolean;
   /** Modelo 3D del recinto (pérgolas, cubiertas). Se oculta para ver debajo. */
   showEnvironment: boolean;
+  /** Zonas, cada parte por separado: el velo de color, el borde y el rótulo. */
+  showZoneFill: boolean;
+  showZoneOutline: boolean;
+  showZoneLabels: boolean;
   showMeasures: boolean;
   snap: boolean;
 
@@ -57,6 +61,9 @@ interface PlanEditorState {
       | 'showSignal'
       | 'showUsb'
       | 'showEnvironment'
+      | 'showZoneFill'
+      | 'showZoneOutline'
+      | 'showZoneLabels'
       | 'showMeasures'
       | 'snap',
   ) => void;
@@ -92,6 +99,9 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   showSignal: true,
   showUsb: true,
   showEnvironment: true,
+  showZoneFill: true,
+  showZoneOutline: true,
+  showZoneLabels: true,
   showMeasures: false,
   // Arranca APAGADO: con una rejilla de 0,5 m, arrastrar daba saltos de medio
   // metro y no había forma de dejar nada en un sitio concreto. Se enciende con

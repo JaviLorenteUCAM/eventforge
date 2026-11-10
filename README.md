@@ -752,6 +752,10 @@ un pin lo quita y arrastrando el rótulo se mueve entera; el nombre, el
 número y el color se editan en el panel, que sin nada seleccionado muestra la lista de zonas. Las
 zonas viajan con el plano al duplicar el evento y al guardar o cargar un escenario.
 
+En la barra de vista, tres botones ocultan por separado el **relleno** de color, el **borde** y el
+**rótulo** (nombre y descripción) de las zonas, en 2D y en 3D. La zona seleccionada se ve siempre
+entera; con los rótulos ocultos, una zona se elige desde la lista del panel.
+
 ### Exportar el plano en 2D
 
 **Exportar plano** (junto a *Captura*) saca un plano para montar, no una foto de la pantalla:

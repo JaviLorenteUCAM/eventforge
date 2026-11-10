@@ -118,6 +118,9 @@ function Scene({
   const showSignal = usePlanStore((s) => s.showSignal);
   const showUsb = usePlanStore((s) => s.showUsb);
   const showEnvironment = usePlanStore((s) => s.showEnvironment);
+  const showZoneFill = usePlanStore((s) => s.showZoneFill);
+  const showZoneOutline = usePlanStore((s) => s.showZoneOutline);
+  const showZoneLabels = usePlanStore((s) => s.showZoneLabels);
   const snapOn = usePlanStore((s) => s.snap);
   const tool = usePlanStore((s) => s.tool);
   const linkFrom = usePlanStore((s) => s.linkFrom);
@@ -448,6 +451,7 @@ function Scene({
         const c = polygonCentroid(pts);
         return (
           <group key={z.id}>
+            {showZoneFill ? (
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} renderOrder={1}>
               <shapeGeometry args={[shape]} />
               <meshBasicMaterial
@@ -461,6 +465,18 @@ function Scene({
                 polygonOffsetUnits={-6}
               />
             </mesh>
+            ) : null}
+            {showZoneOutline ? (
+              <Line
+                points={[...pts, pts[0]].map((p) => [p.x, 0.02, p.y] as [number, number, number])}
+                color={z.color}
+                lineWidth={1.8}
+                dashed
+                dashSize={0.35}
+                gapSize={0.2}
+              />
+            ) : null}
+            {showZoneLabels ? (
             <Html position={[c.x, 0.05, c.y]} center occlude={false} style={{ pointerEvents: "none" }}>
               <span
                 className="whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-semibold text-ink"
@@ -472,6 +488,7 @@ function Scene({
                 {z.number} - {z.name || "Zona"}
               </span>
             </Html>
+            ) : null}
           </group>
         );
       })}

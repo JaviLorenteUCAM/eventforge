@@ -205,6 +205,9 @@ export function Editor2D({
     showUsb,
     showMeasures,
     showEnvironment,
+    showZoneFill,
+    showZoneOutline,
+    showZoneLabels,
     snap,
     bgEdit,
   } = usePlanStore();
@@ -1123,6 +1126,11 @@ export function Editor2D({
             if (points.length < 3) return null;
             const c = polygonCentroid(points);
             const isSel = z.id === selectedZoneId;
+            // Cada parte se puede ocultar desde la barra; la zona elegida se ve
+            // entera, para saber qué se está editando (y el rótulo es su asa).
+            const fillOn = showZoneFill || isSel;
+            const outlineOn = showZoneOutline || isSel;
+            const labelOn = showZoneLabels || isSel;
             const label = `${z.number} - ${z.name || 'Zona'}`;
             const fs = 12 / zoom;
             const chipW = (label.length * 6.6 + 14) / zoom;
@@ -1131,13 +1139,14 @@ export function Editor2D({
               <g key={z.id}>
                 <polygon
                   points={points.map((p) => `${p.x},${p.y}`).join(' ')}
-                  fill={z.color}
+                  fill={fillOn ? z.color : 'none'}
                   fillOpacity={isSel ? 0.2 : 0.12}
-                  stroke={z.color}
+                  stroke={outlineOn ? z.color : 'none'}
                   strokeWidth={strokePx * (isSel ? 2 : 1.4)}
                   strokeDasharray={`${strokePx * 7} ${strokePx * 4}`}
                   pointerEvents="none"
                 />
+                {labelOn ? (
                 <g
                   className={isSel ? 'cursor-move' : 'cursor-pointer'}
                   onPointerDown={(e) => {
@@ -1174,6 +1183,7 @@ export function Editor2D({
                     {label}
                   </text>
                 </g>
+                ) : null}
                 {/* Punto medio de cada lado: arrastrarlo añade un pin ahí. */}
                 {isSel && drag?.kind !== 'zone-pin'
                   ? points.map((p, i) => {
@@ -1236,7 +1246,7 @@ export function Editor2D({
                       </circle>
                     ))
                   : null}
-                {z.description ? (
+                {z.description && labelOn ? (
                   <text
                     x={c.x}
                     y={c.y + chipH * 0.95}
