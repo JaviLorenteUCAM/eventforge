@@ -766,7 +766,7 @@ function wrap(text: string, max: number, maxLines: number): string[] {
 
 type MaterialEntry =
   | { group: string; color?: string; cont?: boolean }
-  | { need: MaterialNeed; inZone?: boolean; short?: boolean }
+  | { need: MaterialNeed; inZone?: boolean; covered?: number; short?: number }
   /** Hueco en blanco antes de un apartado. */
   | { spacer: true }
   /** Apartado destacado (el total del evento), en una banda oscura. */
@@ -802,16 +802,28 @@ export function materialPages(d: Drawing): string[] {
   const zoned = d.options.materialByZone ? (d.input.materialByZone ?? []) : [];
   if (zoned.length) {
     // Separado por zonas: lo que cae dentro de cada una, y al final el total
-    // del evento con las existencias. En las zonas se marca lo que, en el
-    // total, no llega en el almacén.
-    const shortKeys = new Set(needs.filter((m) => !m.cabling && m.missing > 0).map((m) => m.key));
+    // del evento con las existencias.
+    //
+    // Lo del almacén se reparte por orden de zona (1, 2, 3… y lo de fuera de
+    // zonas al final): cada zona se lleva lo que quede hasta cubrir lo suyo, y
+    // la falta solo sale donde ya no llega. Con 2 PCs en el almacén y uno en
+    // cada una de 5 zonas, las zonas 1 y 2 quedan cubiertas y faltan en 3, 4 y 5.
+    const stock = new Map(needs.map((m) => [m.key, m.available]));
+    const round2 = (v: number) => Math.round(v * 100) / 100;
     for (const { zone, needs: list } of zoned) {
       entries.push({
         group: zone ? `${zone.number} - ${zone.name || 'Zona'}` : 'Fuera de zonas',
         color: zone?.color,
       });
       for (const need of byCategory(list)) {
-        entries.push({ need, inZone: true, short: shortKeys.has(need.key) });
+        if (need.cabling) {
+          entries.push({ need, inZone: true });
+          continue;
+        }
+        const left = stock.get(need.key) ?? 0;
+        const covered = round2(Math.min(left, need.needed));
+        stock.set(need.key, round2(left - covered));
+        entries.push({ need, inZone: true, covered, short: round2(need.needed - covered) });
       }
     }
     // El total va aparte: un hueco, una banda oscura con su título, sus
@@ -959,18 +971,21 @@ export function materialPages(d: Drawing): string[] {
           `<text x="${e.color ? col.name + 7 : col.name}" y="${n(cy + rowH * 0.68)}" font-size="2.3" font-weight="bold">${esc(e.color ? e.group : e.group.toUpperCase())}${e.cont ? ' (cont.)' : ''}</text>`,
         );
       } else if (e.inZone) {
-        // Fila de una zona: solo lo necesario ahí; en rojo si en el total
-        // no llega el almacén.
+        // Fila de una zona: lo necesario ahí, lo que cubre el almacén (por
+        // orden de zona) y, en rojo, lo que falta en esta zona.
         const m = e.need;
-        const short = mark && e.short;
+        const short = mark && (e.short ?? 0) > 0;
         if (short) out.push(`<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#fdecec"/>`);
         const base = n(cy + rowH * 0.68);
         out.push(
           `<text x="${col.name + 3}" y="${base}" font-size="2.3"${short ? ' font-weight="bold"' : ''}>${esc(m.name.length > nameChars - 2 ? `${m.name.slice(0, nameChars - 3)}…` : m.name)}</text>`,
           `<text x="${col.need}" y="${base}" font-size="2.3" text-anchor="end">${m.cabling ? '—' : qty(m.needed, m.unit)}</text>`,
         );
-        if (short) {
-          out.push(`<text x="${col.miss}" y="${base}" font-size="2" font-weight="bold" fill="#b91c1c" text-anchor="end">falta (ver total)</text>`);
+        if (mark && !m.cabling) {
+          out.push(
+            `<text x="${col.stock}" y="${base}" font-size="2.3" fill="#555" text-anchor="end">${qty(e.covered ?? 0, m.unit)}</text>`,
+            `<text x="${col.miss}" y="${base}" font-size="2.3" text-anchor="end"${short ? ' font-weight="bold" fill="#b91c1c"' : ' fill="#999"'}>${short ? qty(e.short ?? 0, m.unit) : '—'}</text>`,
+          );
         }
         out.push(`<path d="M${x + 4} ${n(cy + rowH)}H${x + w - 4}" stroke="#ddd" stroke-width="0.1"/>`);
       } else {

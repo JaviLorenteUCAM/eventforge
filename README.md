@@ -788,8 +788,9 @@ porque los números necesitan su clave).
 
 Con **Separar el material por zonas**, el listado va por zonas: cada objeto cuenta en la zona
 donde cae su centro (si se solapan, en la de número más bajo), el cableado en las zonas por las
-que pasa, y lo demás en *Fuera de zonas*. En cada zona va solo lo necesario ahí, marcado en rojo
-si en el total no llega el almacén; al final, aparte (tras un hueco y una banda oscura, con sus
+que pasa, y lo demás en *Fuera de zonas*. En cada zona va lo necesario ahí, lo que cubre el
+almacén y lo que falta: las existencias se reparten por orden de zona (y lo de fuera de zonas al
+final), así que con 2 PCs y uno en cada una de 5 zonas, la falta sale solo en las zonas 3, 4 y 5; al final, aparte (tras un hueco y una banda oscura, con sus
 columnas y por categorías), el **total del evento** con las existencias.
 
 Formatos: **PDF** (por la impresión del navegador, vectorial y a escala exacta: «Guardar como
