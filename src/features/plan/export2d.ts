@@ -765,7 +765,7 @@ function wrap(text: string, max: number, maxLines: number): string[] {
 // ---------------------------------------------------------------------------
 
 type MaterialEntry =
-  | { group: string; color?: string; cont?: boolean }
+  | { group: string; color?: string; cont?: boolean; zone?: boolean }
   | { need: MaterialNeed; inZone?: boolean; covered?: number; short?: number }
   /** Hueco en blanco antes de un apartado. */
   | { spacer: true }
@@ -814,6 +814,7 @@ export function materialPages(d: Drawing): string[] {
       entries.push({
         group: zone ? `${zone.number} - ${zone.name || 'Zona'}` : 'Fuera de zonas',
         color: zone?.color,
+        zone: true,
       });
       for (const need of byCategory(list)) {
         if (need.cabling) {
@@ -857,7 +858,11 @@ export function materialPages(d: Drawing): string[] {
   const rowH = 5.4;
   const top = y + 26;
   const sectionH = rowH * 2.2;
-  const heightOf = (e: MaterialEntry) => ('section' in e ? sectionH : 'spacer' in e ? rowH * 1.2 : rowH);
+  // El título de cada zona, más alto y con letra mayor que las filas, para
+  // que destaque sobre el material.
+  const zoneH = rowH * 1.6;
+  const heightOf = (e: MaterialEntry) =>
+    'section' in e ? sectionH : 'spacer' in e ? rowH * 1.2 : 'group' in e && e.zone ? zoneH : rowH;
   const avail = y + h - 8 - top;
   const pagesEntries: MaterialEntry[][] = [];
   let current: MaterialEntry[] = [];
@@ -962,7 +967,17 @@ export function materialPages(d: Drawing): string[] {
         cy += rowH;
         continue;
       }
-      if ('group' in e) {
+      if ('group' in e && e.zone) {
+        const gh = zoneH;
+        out.push(
+          `<rect x="${x + 4}" y="${n(cy + 0.6)}" width="${w - 8}" height="${n(gh - 0.6)}" fill="#ebebeb"/>`,
+          `<path d="M${x + 4} ${n(cy + 0.6)}H${x + w - 4}" stroke="#000" stroke-width="0.3"/>`,
+          e.color
+            ? `<rect x="${col.name}" y="${n(cy + 2)}" width="7" height="${n(gh - 3.4)}" fill="${e.color}" fill-opacity="0.3" stroke="${e.color}" stroke-width="0.4"/>`
+            : '',
+          `<text x="${e.color ? col.name + 9.5 : col.name}" y="${n(cy + gh * 0.66)}" font-size="3.3" font-weight="bold">${esc(e.group)}${e.cont ? ' (cont.)' : ''}</text>`,
+        );
+      } else if ('group' in e) {
         out.push(
           `<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#f1f1f1"/>`,
           e.color
@@ -1007,7 +1022,7 @@ export function materialPages(d: Drawing): string[] {
         }
         out.push(`<path d="M${x + 4} ${n(cy + rowH)}H${x + w - 4}" stroke="#ddd" stroke-width="0.1"/>`);
       }
-      cy += rowH;
+      cy += heightOf(e);
     }
 
     // Columna lateral: resumen y cajetín
