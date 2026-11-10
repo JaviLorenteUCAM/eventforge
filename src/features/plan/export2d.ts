@@ -55,6 +55,14 @@ export interface ExportOptions {
   material: boolean;
   /** En ese listado, marcar lo que no hay en el almacén. */
   markMissing: boolean;
+  /** El listado separado por zonas (lo que cae dentro de cada una), y el total al final. */
+  materialByZone?: boolean;
+  /**
+   * Encuadre: el punto del plano (metros) que queda en el centro del dibujo.
+   * Null: centrado en todo lo que hay. Con una escala mayor que la que cabe,
+   * es lo que permite sacar solo un trozo del plano.
+   */
+  view?: { cx: number; cy: number } | null;
 }
 
 export interface ExportInput {
@@ -72,6 +80,8 @@ export interface ExportInput {
   material?: MaterialNeed[];
   /** Nombre de cada categoría, por su id. */
   categoryNames?: Map<string, string>;
+  /** Material de lo que cae dentro de cada zona (zona null: fuera de todas). */
+  materialByZone?: { zone: PlanZone | null; needs: MaterialNeed[] }[];
 }
 
 type Pt = { x: number; y: number };
@@ -289,6 +299,10 @@ export interface Sheet {
   /** Columna de leyenda y cajetín. */
   side: { x: number; y: number; w: number; h: number };
   denom: number;
+  /** La escala con la que cabe todo (la «automática»). */
+  autoDenom: number;
+  /** Punto del plano en el centro del dibujo. */
+  centre: Pt;
   /** mm de papel por metro real. */
   k: number;
   /** Del plano (m) a la hoja (mm). */
@@ -312,12 +326,17 @@ export function layoutSheet(d: Drawing): Sheet {
   const denom = d.options.scale ?? auto;
   const k = 1000 / denom;
 
-  // Centrado en el hueco útil.
-  const ox = area.x + pad.l + (fitW - dw * k) / 2;
-  const oy = area.y + pad.t + (fitH - dh * k) / 2;
-  const toPaper = (p: Pt) => ({ x: ox + (p.x - d.bounds.minX) * k, y: oy + (p.y - d.bounds.minY) * k });
+  // El punto elegido (o el centro de todo) va al centro del hueco útil.
+  const centre = d.options.view ?? {
+    x: (d.bounds.minX + d.bounds.maxX) / 2,
+    y: (d.bounds.minY + d.bounds.maxY) / 2,
+  };
+  const c = 'cx' in centre ? { x: centre.cx, y: centre.cy } : centre;
+  const px = area.x + pad.l + fitW / 2;
+  const py = area.y + pad.t + fitH / 2;
+  const toPaper = (p: Pt) => ({ x: px + (p.x - c.x) * k, y: py + (p.y - c.y) * k });
 
-  return { w, h, margin, area, side, denom, k, toPaper };
+  return { w, h, margin, area, side, denom, autoDenom: auto, centre: c, k, toPaper };
 }
 
 // ---------------------------------------------------------------------------
@@ -467,10 +486,17 @@ export function toSvg(d: Drawing): string {
   out.push(`</g>`);
 
   // --- Cotas generales del recinto ------------------------------------------
+  // Solo cuando el recinto entero entra en el encuadre: con un trozo del
+  // plano, las cotas quedarían colgando fuera del dibujo.
   const r1 = P({ x: d.width, y: d.depth });
   const top = Math.max(sh.area.y + 6, r0.y - 7);
   const left = Math.max(sh.area.x + 6, r0.x - 7);
-  out.push(
+  const fits =
+    r0.x >= sh.area.x + 8 &&
+    r0.y >= sh.area.y + 8 &&
+    r1.x <= sh.area.x + sh.area.w - 2 &&
+    r1.y <= sh.area.y + sh.area.h - 14;
+  if (fits) out.push(
     `<g stroke="#000" stroke-width="0.13" fill="none">`,
     `<path d="M${n(r0.x)} ${n(r0.y - 1)}V${n(top - 1.5)}M${n(r1.x)} ${n(r0.y - 1)}V${n(top - 1.5)}M${n(r0.x)} ${n(top)}H${n(r1.x)}"/>`,
     `<path d="M${n(r0.x - 1)} ${n(r0.y)}H${n(left - 1.5)}M${n(r0.x - 1)} ${n(r1.y)}H${n(left - 1.5)}M${n(left)} ${n(r0.y)}V${n(r1.y)}"/>`,
@@ -731,7 +757,9 @@ function wrap(text: string, max: number, maxLines: number): string[] {
 // Hojas de material
 // ---------------------------------------------------------------------------
 
-type MaterialEntry = { group: string; cont?: boolean } | { need: MaterialNeed };
+type MaterialEntry =
+  | { group: string; color?: string; cont?: boolean; total?: boolean }
+  | { need: MaterialNeed; inZone?: boolean; short?: boolean };
 
 /**
  * El listado de material del evento, en las hojas que hagan falta, con el
@@ -748,15 +776,43 @@ export function materialPages(d: Drawing): string[] {
   const groupOf = (m: MaterialNeed) =>
     m.cabling ? 'Cableado' : (m.categoryId ? names.get(m.categoryId) : undefined) ?? 'Otros';
 
-  const groups = new Map<string, MaterialNeed[]>();
-  for (const m of needs) groups.set(groupOf(m), [...(groups.get(groupOf(m)) ?? []), m]);
-  const ordered = [...groups.entries()].sort(
-    (a, b) => Number(a[0] === 'Cableado') - Number(b[0] === 'Cableado') || a[0].localeCompare(b[0], 'es'),
-  );
+  /** Por categoría, con el cableado al final y cada grupo por orden alfabético. */
+  const byCategory = (list: MaterialNeed[]) => {
+    const groups = new Map<string, MaterialNeed[]>();
+    for (const m of list) groups.set(groupOf(m), [...(groups.get(groupOf(m)) ?? []), m]);
+    return [...groups.entries()]
+      .sort((a, b) => Number(a[0] === 'Cableado') - Number(b[0] === 'Cableado') || a[0].localeCompare(b[0], 'es'))
+      .flatMap(([, l]) => l.sort((a, b) => a.name.localeCompare(b.name, 'es')));
+  };
+
   const entries: MaterialEntry[] = [];
-  for (const [group, list] of ordered) {
-    entries.push({ group });
-    for (const need of list.sort((a, b) => a.name.localeCompare(b.name, 'es'))) entries.push({ need });
+  const zoned = d.options.materialByZone ? (d.input.materialByZone ?? []) : [];
+  if (zoned.length) {
+    // Separado por zonas: lo que cae dentro de cada una, y al final el total
+    // del evento con las existencias. En las zonas se marca lo que, en el
+    // total, no llega en el almacén.
+    const shortKeys = new Set(needs.filter((m) => !m.cabling && m.missing > 0).map((m) => m.key));
+    for (const { zone, needs: list } of zoned) {
+      entries.push({
+        group: zone ? `${zone.number} - ${zone.name || 'Zona'}` : 'Fuera de zonas',
+        color: zone?.color,
+      });
+      for (const need of byCategory(list)) {
+        entries.push({ need, inZone: true, short: shortKeys.has(need.key) });
+      }
+    }
+    entries.push({ group: 'Total del evento', total: true });
+    for (const need of byCategory([...needs])) entries.push({ need });
+  } else {
+    const groups = new Map<string, MaterialNeed[]>();
+    for (const m of needs) groups.set(groupOf(m), [...(groups.get(groupOf(m)) ?? []), m]);
+    const ordered = [...groups.entries()].sort(
+      (a, b) => Number(a[0] === 'Cableado') - Number(b[0] === 'Cableado') || a[0].localeCompare(b[0], 'es'),
+    );
+    for (const [group, list] of ordered) {
+      entries.push({ group });
+      for (const need of list.sort((a, b) => a.name.localeCompare(b.name, 'es'))) entries.push({ need });
+    }
   }
 
   const rowH = 5.4;
@@ -764,12 +820,12 @@ export function materialPages(d: Drawing): string[] {
   const perPage = Math.max(5, Math.floor((y + h - 8 - top) / rowH));
   const pagesEntries: MaterialEntry[][] = [];
   let current: MaterialEntry[] = [];
-  let lastGroup = '';
+  let lastGroup: Extract<MaterialEntry, { group: string }> = { group: '' };
   for (const e of entries) {
-    if ('group' in e) lastGroup = e.group;
+    if ('group' in e) lastGroup = e;
     if (current.length >= perPage) {
       pagesEntries.push(current);
-      current = 'group' in e ? [] : [{ group: lastGroup, cont: true }];
+      current = 'group' in e ? [] : [{ ...lastGroup, cont: true }];
     }
     current.push(e);
   }
@@ -813,9 +869,27 @@ export function materialPages(d: Drawing): string[] {
     for (const e of pageEntries) {
       if ('group' in e) {
         out.push(
-          `<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#f1f1f1"/>`,
-          `<text x="${col.name}" y="${n(cy + rowH * 0.68)}" font-size="2.3" font-weight="bold">${esc(e.group.toUpperCase())}${e.cont ? ' (cont.)' : ''}</text>`,
+          `<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="${e.total ? '#e4e4e4' : '#f1f1f1'}"/>`,
+          e.color
+            ? `<rect x="${col.name}" y="${n(cy + 1.3)}" width="5" height="${rowH - 2.6}" fill="${e.color}" fill-opacity="0.3" stroke="${e.color}" stroke-width="0.35"/>`
+            : '',
+          `<text x="${e.color ? col.name + 7 : col.name}" y="${n(cy + rowH * 0.68)}" font-size="2.3" font-weight="bold">${esc(e.color ? e.group : e.group.toUpperCase())}${e.cont ? ' (cont.)' : ''}</text>`,
         );
+      } else if (e.inZone) {
+        // Fila de una zona: solo lo necesario ahí; en rojo si en el total
+        // no llega el almacén.
+        const m = e.need;
+        const short = mark && e.short;
+        if (short) out.push(`<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#fdecec"/>`);
+        const base = n(cy + rowH * 0.68);
+        out.push(
+          `<text x="${col.name + 3}" y="${base}" font-size="2.3"${short ? ' font-weight="bold"' : ''}>${esc(m.name.length > nameChars - 2 ? `${m.name.slice(0, nameChars - 3)}…` : m.name)}</text>`,
+          `<text x="${col.need}" y="${base}" font-size="2.3" text-anchor="end">${m.cabling ? '—' : qty(m.needed, m.unit)}</text>`,
+        );
+        if (short) {
+          out.push(`<text x="${col.miss}" y="${base}" font-size="2" font-weight="bold" fill="#b91c1c" text-anchor="end">falta (ver total)</text>`);
+        }
+        out.push(`<path d="M${x + 4} ${n(cy + rowH)}H${x + w - 4}" stroke="#ddd" stroke-width="0.1"/>`);
       } else {
         const m = e.need;
         const missing = mark && !m.cabling && m.missing > 0;

@@ -775,14 +775,24 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
 - la **foto de fondo** en gris, si se quiere;
 - el **cajetín**: evento, plano, lugar, fecha, escala, formato y autor.
 
+**Encuadre**: en la vista previa se arrastra el dibujo para elegir qué parte del plano sale, y
+con la rueda o con − / + se acerca o aleja entre las escalas normalizadas (1:20 … 1:2000), así
+se puede sacar solo un trozo del plano a una escala mayor. *Todo* vuelve al plano entero a la
+escala que cabe. Las cotas generales del recinto solo se dibujan cuando el recinto entra entero.
+
 En el PDF, detrás del plano, van las hojas del **listado de material** del evento, con el mismo
 cajetín: agrupado por categoría, con lo necesario y, si se pide, **lo que no hay en el almacén**
 resaltado con lo que falta, y un resumen.
 
+Con **Separar el material por zonas**, el listado va por zonas: cada objeto cuenta en la zona
+donde cae su centro (si se solapan, en la de número más bajo), el cableado en las zonas por las
+que pasa, y lo demás en *Fuera de zonas*. En cada zona va solo lo necesario ahí, marcado en rojo
+si en el total no llega el almacén; al final, el **total del evento** con las existencias.
+
 Formatos: **PDF** (por la impresión del navegador, vectorial y a escala exacta: «Guardar como
 PDF» al 100 %), **SVG** y **DXF** para AutoCAD y cualquier programa de CAD, en metros reales y
 por capas (RECINTO, COTAS, OBJETOS, MARCAS, TEXTOS, ZONAS, SUMINISTROS, una por tipo de cable,
-PILARES y CUBIERTAS).
+PILARES y CUBIERTAS); el DXF lleva siempre el plano entero.
 
 ### Imagen de fondo y calibración a escala real
 

@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, FileCode2, FileDown, Printer } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileCode2,
+  FileDown,
+  Maximize,
+  Minus,
+  Plus,
+  Printer,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Checkbox, Field, Modal, Segmented, Select } from '@/components/ui';
 import type {
@@ -15,6 +24,7 @@ import { downloadBlob, slugify } from '@/lib/utils';
 import {
   buildDrawing,
   layoutSheet,
+  SCALES,
   toDxf,
   toSvg,
   toSvgPages,
@@ -22,6 +32,7 @@ import {
   type Paper,
 } from './export2d';
 import { loadFootprint, type Footprint } from './modelFootprint';
+import { pointInPolygon } from '@/lib/silhouette';
 
 /**
  * EXPORTAR EL PLANO EN 2D
@@ -43,6 +54,7 @@ export function ExportPlanModal({
   zones,
   material,
   categoryNames,
+  needsFor,
   author,
 }: {
   open: boolean;
@@ -57,6 +69,8 @@ export function ExportPlanModal({
   zones: PlanZone[];
   material: MaterialNeed[];
   categoryNames: Map<string, string>;
+  /** Calcula el material de un subconjunto de objetos y cables (para cada zona). */
+  needsFor: (objects: PlanObject[], connections: PlanConnection[]) => MaterialNeed[];
   author: string;
 }) {
   const [paper, setPaper] = useState<Paper>('A3');
@@ -69,7 +83,44 @@ export function ExportPlanModal({
   const [marks, setMarks] = useState(true);
   const [withMaterial, setWithMaterial] = useState(true);
   const [markMissing, setMarkMissing] = useState(true);
+  const [byZone, setByZone] = useState(false);
+
+  /**
+   * Material de cada zona: los objetos cuyo centro cae dentro. Un objeto en
+   * zonas que se solapan cuenta en la de número más bajo, para no contarlo
+   * dos veces. El cableado va con las zonas por las que pasa (basta con que
+   * uno de sus extremos esté dentro).
+   */
+  const materialByZone = useMemo(() => {
+    if (!open || !byZone || zones.length === 0) return [];
+    const sorted = [...zones].sort((a, b) => a.number - b.number);
+    const zoneOf = new Map<string, string>();
+    for (const o of objects) {
+      const p = { x: Number(o.x), y: Number(o.y) };
+      const z = sorted.find((q) =>
+        pointInPolygon(p, (q.points ?? []).map((v) => ({ x: Number(v.x), y: Number(v.y) }))),
+      );
+      if (z) zoneOf.set(o.id, z.id);
+    }
+    const groupFor = (zoneId: string | null) => {
+      const objs = objects.filter((o) => (zoneOf.get(o.id) ?? null) === zoneId);
+      const ids = new Set(objs.map((o) => o.id));
+      const conns = connections.filter((c) => ids.has(c.from_object_id) || ids.has(c.to_object_id));
+      return needsFor(objs, conns);
+    };
+    return [
+      ...sorted.map((zone) => ({ zone, needs: groupFor(zone.id) })),
+      { zone: null, needs: groupFor(null) },
+    ].filter((g) => g.needs.length > 0);
+  }, [open, byZone, zones, objects, connections, needsFor]);
   const [page, setPage] = useState(0);
+  /** Encuadre: el punto del plano que va al centro del dibujo (null: todo). */
+  const [view, setView] = useState<{ cx: number; cy: number } | null>(null);
+  /** Lo que se lleva arrastrado, en píxeles de la vista previa. */
+  const [dragPx, setDragPx] = useState<{ x: number; y: number } | null>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
   const visible = useMemo(() => backgrounds.filter((b) => b.visible), [backgrounds]);
 
@@ -140,6 +191,7 @@ export function ExportPlanModal({
               author,
               material,
               categoryNames,
+              materialByZone,
             },
             {
               paper,
@@ -152,18 +204,86 @@ export function ExportPlanModal({
               marks,
               material: withMaterial,
               markMissing,
+              materialByZone: byZone,
+              view,
             } satisfies ExportOptions,
           )
         : null,
     [
       open, plan, event, objects, connections, venues, photos, zones, author, material, categoryNames,
-      paper, scale, photo, cables, venue, showZones, feeds, marks, withMaterial, markMissing,
+      materialByZone, byZone,
+      paper, scale, photo, cables, venue, showZones, feeds, marks, withMaterial, markMissing, view,
     ],
   );
   const svg = useMemo(() => (drawing ? toSvg(drawing) : ''), [drawing]);
   const pages = useMemo(() => (drawing ? toSvgPages(drawing) : []), [drawing]);
   const shown = Math.min(page, Math.max(0, pages.length - 1));
   const sheet = useMemo(() => (drawing ? layoutSheet(drawing) : null), [drawing]);
+
+  /**
+   * ENCUADRE
+   *
+   * En la vista previa de la hoja del plano se arrastra el dibujo para elegir
+   * qué parte entra, y con la rueda o con − / + se cambia de escala entre las
+   * normalizadas. Mientras se arrastra solo se desplaza la imagen; al soltar
+   * se vuelve a componer la hoja con el nuevo centro.
+   */
+  const zoom = (dir: 1 | -1) => {
+    if (!sheet) return;
+    const i = SCALES.indexOf(sheet.denom);
+    const at = i < 0 ? SCALES.findIndex((v) => v > sheet.denom) : i;
+    const next = SCALES[Math.min(SCALES.length - 1, Math.max(0, at - dir))];
+    if (next === sheet.denom) return;
+    setView((v) => v ?? { cx: sheet.centre.x, cy: sheet.centre.y });
+    setScale(next);
+  };
+  const fitAll = () => {
+    setView(null);
+    setScale(null);
+  };
+
+  function onPreviewDown(e: React.PointerEvent) {
+    if (shown !== 0 || e.button !== 0) return;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    setDragPx({ x: 0, y: 0 });
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  }
+  function onPreviewMove(e: React.PointerEvent) {
+    if (!dragStart.current) return;
+    setDragPx({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
+  }
+  function onPreviewUp() {
+    const img = imgRef.current;
+    if (!dragStart.current || !dragPx || !sheet || !img) {
+      dragStart.current = null;
+      setDragPx(null);
+      return;
+    }
+    // Píxeles de la vista previa → mm de hoja → metros del plano.
+    const mmPerPx = sheet.w / Math.max(1, img.clientWidth);
+    const dx = (dragPx.x * mmPerPx) / sheet.k;
+    const dy = (dragPx.y * mmPerPx) / sheet.k;
+    if (Math.abs(dragPx.x) + Math.abs(dragPx.y) > 2) {
+      setView({ cx: sheet.centre.x - dx, cy: sheet.centre.y - dy });
+    }
+    dragStart.current = null;
+    setDragPx(null);
+  }
+
+  // La rueda acerca y aleja (con el listener a mano: el de React es pasivo y
+  // no deja evitar que se desplace la ventana).
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || shown !== 0) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      zoomRef.current(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
 
   const [preview, setPreview] = useState<string | null>(null);
   useEffect(() => {
@@ -260,7 +380,7 @@ export function ExportPlanModal({
               onChange={(e) => setScale(e.target.value === 'auto' ? null : Number(e.target.value))}
             >
               <option value="auto">Automática (la mayor que quepa)</option>
-              {[50, 100, 150, 200, 250, 500, 1000].map((s) => (
+              {SCALES.filter((v) => v >= 20 && v <= 2000).map((s) => (
                 <option key={s} value={s}>
                   1:{s}
                 </option>
@@ -300,6 +420,13 @@ export function ExportPlanModal({
               className="pl-6"
             />
             <Checkbox
+              label="Separar el material por zonas"
+              checked={byZone}
+              disabled={!withMaterial || material.length === 0 || zones.length === 0}
+              onChange={(e) => setByZone(e.target.checked)}
+              className="pl-6"
+            />
+            <Checkbox
               label="Recinto 3D (pilares y cubiertas)"
               checked={venue}
               disabled={venues.length === 0}
@@ -310,16 +437,51 @@ export function ExportPlanModal({
           <p className="text-[11.5px] leading-relaxed text-dim">
             Los objetos iguales comparten número y la leyenda dice cuántos hay. Las zonas salen
             rotuladas («1 - Zona Fripozo») y los puntos de luz y de red, con su símbolo y numerados. El DXF va en metros
-            reales y por capas (recinto, objetos, marcas, cada tipo de cable, pilares y cubiertas).
+            reales y por capas (recinto, objetos, marcas, cada tipo de cable, pilares y cubiertas),
+            siempre con el plano entero.
           </p>
         </div>
 
         <div className="min-w-0">
-          <div className="overflow-hidden rounded-lg border border-line bg-white">
+          <div
+            ref={boxRef}
+            className={`relative overflow-hidden rounded-lg border border-line bg-white ${shown === 0 ? (dragPx ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+            onPointerDown={onPreviewDown}
+            onPointerMove={onPreviewMove}
+            onPointerUp={onPreviewUp}
+            onPointerCancel={onPreviewUp}
+          >
             {preview ? (
-              <img src={preview} alt="Vista previa del plano" className="block w-full" />
+              <img
+                ref={imgRef}
+                src={preview}
+                alt="Vista previa del plano"
+                draggable={false}
+                className="block w-full select-none"
+                style={dragPx ? { transform: `translate(${dragPx.x}px, ${dragPx.y}px)` } : undefined}
+              />
+            ) : null}
+            {shown === 0 ? (
+              <div
+                className="absolute bottom-2 left-2 flex items-center gap-1 rounded-lg border border-line bg-[var(--ef-surface-solid)] p-1 shadow-lg"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <Button size="sm" variant="ghost" icon={<Minus className="size-3.5" />} onClick={() => zoom(-1)} aria-label="Alejar" />
+                <span className="num min-w-[52px] text-center text-[12px] text-ink">
+                  1:{sheet?.denom}
+                </span>
+                <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" />} onClick={() => zoom(1)} aria-label="Acercar" />
+                <Button size="sm" variant="ghost" icon={<Maximize className="size-3.5" />} onClick={fitAll}>
+                  Todo
+                </Button>
+              </div>
             ) : null}
           </div>
+          {shown === 0 ? (
+            <p className="mt-1.5 text-center text-[11.5px] text-dim">
+              Arrastra para elegir qué parte del plano sale · rueda o − / + para acercar
+            </p>
+          ) : null}
           {pages.length > 1 ? (
             <div className="mt-2 flex items-center justify-center gap-2 text-[12.5px] text-muted">
               <Button

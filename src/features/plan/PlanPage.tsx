@@ -329,6 +329,11 @@ export function PlanPage() {
       ),
     [objects.data, connections.data, catalog.data, items.data, variants.data],
   );
+  const needsFor = useCallback(
+    (objs: PlanObject[], conns: PlanConnection[]) =>
+      computeMaterialNeeds(objs, conns, catalog.data ?? [], items.data ?? [], variants.data ?? []),
+    [catalog.data, items.data, variants.data],
+  );
   const categoryNames = useMemo(
     () => new Map((categories.data ?? []).map((c) => [c.id, c.name])),
     [categories.data],
@@ -1869,6 +1874,7 @@ export function PlanPage() {
         zones={zoneList}
         material={materialNeeds}
         categoryNames={categoryNames}
+        needsFor={needsFor}
         author={profile?.name ?? ''}
       />
 
