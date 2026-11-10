@@ -74,8 +74,21 @@ export function EnvironmentModel({
     copy.traverse((node) => {
       const mesh = node as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      // Sin sombras: la foto aérea ya trae las suyas pintadas, y un recinto de
+      // cien metros con un único mapa de sombras salía a rayas y con bordes
+      // escalonados.
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      // Las caras con la foto (las cubiertas) por delante de lo que tengan
+      // justo debajo: un techo plano con su losa a milímetros parpadeaba a
+      // rayas al mover la cámara.
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of materials) {
+        if (!(m as THREE.MeshStandardMaterial).map) continue;
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -2;
+        m.polygonOffsetUnits = -2;
+      }
     });
     return copy;
   }, [source]);

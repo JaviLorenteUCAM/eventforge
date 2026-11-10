@@ -134,6 +134,25 @@ function placeLocal(geo, cxr, cyr) {
 const box = (w, h, d, x, y, z) =>
   new THREE.BoxGeometry(w, h, d).translate(x, y, z).toNonIndexed();
 
+/** Quita los triángulos que miran hacia arriba. */
+function withoutTop(geo) {
+  const pos = geo.getAttribute('position');
+  const nor = geo.getAttribute('normal');
+  const P = [];
+  const N = [];
+  for (let i = 0; i < pos.count; i += 3) {
+    if (nor.getY(i) > 0.9) continue;
+    for (let k = 0; k < 3; k++) {
+      P.push(pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k));
+      N.push(nor.getX(i + k), nor.getY(i + k), nor.getZ(i + k));
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  return g;
+}
+
 /** Cuatro caras de un tronco de pirámide (o pirámide si top = 0), mirando hacia fuera. */
 function frustum(base, top, y0, y1) {
   const g = new THREE.BufferGeometry();
@@ -215,9 +234,9 @@ function walkway([x0, x1, y0, y1], tone) {
   const target = tone === 'light' ? parts.slabLight : parts.slabGrey;
 
   parts.roof.push(placeLocal(flat(w, d, topY, true), cx, cy));
-  // Cantos y cara de abajo: una caja sin la tapa de arriba sería más fiel,
-  // pero la tapa queda tapada por la cara con la foto, a la misma altura.
-  target.push(placeLocal(box(w, slab, d, 0, topY - slab / 2 - 0.002, 0), cx, cy));
+  // Cantos y cara de abajo, SIN la tapa de arriba: esa la pone la cara con la
+  // foto. Con las dos a la misma altura parpadeaban a rayas.
+  target.push(placeLocal(withoutTop(box(w, slab, d, 0, topY - slab / 2, 0)), cx, cy));
 
   // Pilares a lo largo del lado largo, sin pasar de la separación máxima.
   const along = w >= d ? 'u' : 'v';

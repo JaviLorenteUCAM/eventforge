@@ -513,8 +513,12 @@ export function GroundImage({
         roughness={0.95}
         metalness={0}
         depthWrite={false}
+        // Siempre por delante de la rejilla, que va un centímetro por debajo:
+        // con la cámara lejos la profundidad no da para separarlas y la rejilla
+        // atravesaba la foto a trozos.
         polygonOffset
-        polygonOffsetFactor={-1}
+        polygonOffsetFactor={-4}
+        polygonOffsetUnits={-4}
       />
     </mesh>
   );

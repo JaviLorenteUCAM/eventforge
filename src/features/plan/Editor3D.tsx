@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Grid, Html, Line, OrbitControls } from "@react-three/drei";
 import { Network, Zap } from "lucide-react";
 import * as THREE from "three";
@@ -135,6 +135,27 @@ function Scene({
     y: number;
   } | null>(null);
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
+
+  /**
+   * PLANO CERCANO ADAPTABLE
+   *
+   * El `near` de 2 cm permite pegarse a una alfombra, pero con él la precisión
+   * de profundidad a 50 m es de unos 7 mm y a 100 m de unos 3 cm: la foto de
+   * fondo, la rejilla y las caras muy juntas de un recinto grande se pelean
+   * por el mismo píxel y salen rayas que bailan al mover la cámara. Aquí el
+   * `near` crece con la distancia al punto que se mira (lejos nadie necesita
+   * ver nada a 2 cm de la cámara) y vuelve a 2 cm al acercarse.
+   */
+  useFrame(({ camera: cam }) => {
+    const target = controlsRef.current?.target;
+    if (!target || !(cam instanceof THREE.PerspectiveCamera)) return;
+    const distance = cam.position.distanceTo(target);
+    const near = Math.min(1.5, Math.max(0.02, distance * 0.004));
+    if (Math.abs(cam.near - near) / near > 0.15) {
+      cam.near = near;
+      cam.updateProjectionMatrix();
+    }
+  });
 
   /** Punto de mira inicial: el centro del recinto. Solo al abrir el plano. */
   useEffect(() => {
@@ -348,7 +369,11 @@ function Scene({
         position={[W, Math.max(W, D), D * 0.5]}
         intensity={1.5}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        // Sin margen, las caras que se sombrean a sí mismas salen a rayas
+        // («acné»), y más con un mapa de sombras repartido en un recinto grande.
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.03}
+        shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-Math.max(W, D)}
         shadow-camera-right={Math.max(W, D)}
         shadow-camera-top={Math.max(W, D)}
