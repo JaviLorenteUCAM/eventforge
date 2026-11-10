@@ -88,6 +88,7 @@ const FILES = [
   '0011_texture_transparency.sql',
   '0012_silhouette_mode.sql',
   '0013_usb_cabling.sql',
+  '0014_volume_mode.sql',
 ];
 let allOk = true;
 
@@ -425,6 +426,19 @@ await mustFail(
   'Dos estilos del mismo material no pueden llamarse igual',
   `insert into public.warehouse_item_variants (item_id, name) values ('${itemId}', 'Mantel rojo')`,
 );
+
+// El modo volumen (0014) se admite en las tres tablas con textura.
+try {
+  await db.exec(`
+    update public.warehouse_items set texture_mode='volume' where id='${itemId}';
+    update public.warehouse_item_variants set texture_mode='volume' where item_id='${itemId}';
+    update public.object_catalog set texture_mode='volume' where id = (select id from public.object_catalog limit 1);
+  `);
+  console.log('  [32m✓[0m El modo volumen se acepta en materiales, estilos y catálogo');
+} catch (err) {
+  allOk = false;
+  console.log(`  [31m✗[0m El modo volumen se rechaza: ${err.message}`);
+}
 
 await mustFail(
   'Un modo de textura inválido se rechaza',

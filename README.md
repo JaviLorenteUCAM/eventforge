@@ -175,6 +175,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 11 | `supabase/migrations/0011_texture_transparency.sql` | Color transparente en las texturas |
 | 12 | `supabase/migrations/0012_silhouette_mode.sql` | Modo silueta: la imagen es la forma del objeto |
 | 13 | `supabase/migrations/0013_usb_cabling.sql` | Cableado USB y categoría de periféricos |
+| 14 | `supabase/migrations/0014_volume_mode.sql` | Modo volumen: la forma sale de las vistas de la plantilla |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -579,7 +580,8 @@ eventforge/
 │       ├── 0010_object_angles.sql   # giro en los tres ejes
 │       ├── 0011_texture_transparency.sql
 │       ├── 0012_silhouette_mode.sql   # la imagen es la forma del objeto
-│       └── 0013_usb_cabling.sql       # cableado USB, categoría periféricos
+│       ├── 0013_usb_cabling.sql       # cableado USB, categoría periféricos
+│       └── 0014_volume_mode.sql       # modo de textura «volumen»
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -814,6 +816,37 @@ como una pieza cortada de verdad.
 
 Es el modo para soportes, estructuras, aros, letras sueltas y cualquier cosa que no sea un
 bloque macizo.
+
+#### Modo volumen: objetos con forma propia (una silla gaming)
+
+Con la plantilla en cruz y el fondo de cada foto recortado, una silla gaming acababa siendo
+cuatro fotos planas alrededor de una caja vacía: desde cualquier ángulo se veían todas a la vez,
+como un farolillo, y la de detrás salía en espejo. La silueta tampoco sirve, porque solo usa la
+vista de frente.
+
+El modo **Volumen** usa la misma plantilla de seis caras, pero cada foto con el fondo recortado
+(PNG transparente o el color transparente). Las fotos se usan dos veces:
+
+1. **Para tallar la forma.** Se parte de un bloque con las medidas del objeto y cada vista le
+   quita lo que en ella es fondo: el frente da el contorno del respaldo, el lateral su
+   inclinación y el grosor del asiento, la de arriba la base. Queda lo que es sólido visto desde
+   todas partes.
+2. **Para pintarla.** Cada parte toma el color de la foto que la ve de frente, así que **la
+   marca sale donde está en la foto**, por delante y por detrás, sin modelar ni texturizar nada
+   en 3D.
+
+Con frente y un lateral ya funciona; cuantas más vistas, más fiel. Las caras que se dejan sin
+recortar (con el color y el rótulo de la plantilla) o vacías del todo no cuentan. Al guardar en
+JPEG el borde mezcla la silla con el color clave; ese ribete se limpia en los cantos sin tocar
+los colores del interior, de modo que un logo rojo en el respaldo se queda como está.
+
+Lo que no puede salir son los huecos que no se ven desde ninguna vista: la estrella de la base
+queda debajo del asiento tanto desde arriba como desde abajo, así que sale como una base maciza
+del tamaño del asiento. Para un plano de montaje basta, y lo que importa —el respaldo con su
+marca— sale fiel.
+
+Tallar una silla cuesta unas décimas de segundo la primera vez; las demás sillas iguales del
+plano reutilizan el cálculo.
 
 ### Orientación: girar un objeto en los tres ejes
 

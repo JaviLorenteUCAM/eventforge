@@ -3,6 +3,7 @@ import type { ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 import { boxFaceUvs } from '@/lib/textureAtlas';
 import { silhouetteFromImage } from '@/lib/silhouette';
+import { bleedImage, buildVolume, readAlpha, type VolumeMesh } from '@/lib/volume';
 import type { TextureMode } from '@/lib/types';
 
 export interface TextureSpec {
@@ -235,6 +236,77 @@ function useSilhouetteGeometry(
   return geometry;
 }
 
+/**
+ * Lo calculado para cada imagen y medidas. Tallar una silla cuesta unos
+ * cientos de milisegundos; con veinte sillas iguales en el plano se hace una
+ * vez y el resto lo reutiliza. Cada malla crea su propia geometría y textura a
+ * partir de estos datos, así que puede liberarlas sin afectar a las demás.
+ */
+const volumeCache = new Map<string, { mesh: VolumeMesh; canvas: HTMLCanvasElement } | null>();
+
+function volumeKey(url: string, spec: TextureSpec, l: number, w: number, h: number) {
+  // Las URL firmadas cambian de token, pero la ruta es la misma imagen.
+  const path = url.split('?')[0];
+  const a = spec.atlas;
+  return [path, spec.keyColor ?? '', spec.keyTolerance ?? '', l, w, h, a.length, a.width, a.height].join('|');
+}
+
+/**
+ * VOLUMEN TALLADO CON LAS VISTAS (modo `volume`)
+ *
+ * La plantilla es la misma cruz de seis caras que el modo por caras, pero con
+ * el fondo de cada foto recortado. En vez de pegar las fotos sobre una caja,
+ * se cruzan sus contornos para sacar la forma del objeto y se pinta cada parte
+ * con la foto que la ve de frente. Ver `src/lib/volume.ts`.
+ */
+function useVolume(
+  map: THREE.Texture | null,
+  spec: TextureSpec | undefined,
+  length: number,
+  width: number,
+  height: number,
+): { geometry: THREE.BufferGeometry; map: THREE.Texture } | null {
+  const result = useMemo(() => {
+    if (!map || !spec || spec.mode !== 'volume') return null;
+    const image = map.image as (CanvasImageSource & { width: number; height: number }) | undefined;
+    if (!image?.width) return null;
+
+    const key = volumeKey(spec.url, spec, length, width, height);
+    let data = volumeCache.get(key);
+    if (data === undefined) {
+      const alpha = readAlpha(image, spec.keyColor, spec.keyTolerance);
+      const mesh = alpha ? buildVolume(alpha, spec.atlas, length, width, height) : null;
+      const canvas = mesh ? bleedImage(image, spec.keyColor, spec.keyTolerance) : null;
+      data = mesh && canvas ? { mesh, canvas } : null;
+      if (volumeCache.size > 32) volumeCache.delete(volumeCache.keys().next().value!);
+      volumeCache.set(key, data);
+    }
+    if (!data) return null;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(data.mesh.positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(data.mesh.normals, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(data.mesh.uvs, 2));
+    geometry.computeBoundingSphere();
+
+    const texture = new THREE.CanvasTexture(data.canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    return { geometry, map: texture };
+  }, [map, spec, length, width, height]);
+
+  useEffect(
+    () => () => {
+      result?.geometry.dispose();
+      result?.map.dispose();
+    },
+    [result],
+  );
+  return result;
+}
+
 interface Props extends Omit<ThreeElements['mesh'], 'ref' | 'material' | 'children' | 'args'> {
   shape: 'box' | 'cylinder' | 'plane' | 'text' | 'line';
   length: number;
@@ -272,6 +344,7 @@ export function TexturedMesh({
   const map = useImageTexture(texture?.url, texture?.keyColor, texture?.keyTolerance);
   const isBox = shape !== 'cylinder';
   const silhouette = useSilhouetteGeometry(map, texture, length, width, height);
+  const volume = useVolume(isBox ? map : null, texture, length, width, height);
 
   const materials = useMemo(() => {
     const base = {
@@ -291,6 +364,17 @@ export function TexturedMesh({
 
     if (!map || !texture) {
       return new THREE.MeshStandardMaterial({ ...base, color: new THREE.Color(color) });
+    }
+
+    // Volumen: la forma ya es la del objeto, así que no se recorta nada por
+    // alfa (los bordes saldrían mordidos) y basta con una cara.
+    if (volume) {
+      return new THREE.MeshStandardMaterial({
+        ...base,
+        map: volume.map,
+        alphaTest: 0,
+        side: THREE.FrontSide,
+      });
     }
 
     // Silueta: dos materiales, uno para las caras (con la imagen) y otro para
@@ -338,18 +422,19 @@ export function TexturedMesh({
       t.repeat.set(uv.repeat[0] - insetU * 2, uv.repeat[1] - insetV * 2);
       return new THREE.MeshStandardMaterial({ ...base, map: t });
     });
-  }, [map, texture, isBox, silhouette, color, emissive, emissiveIntensity, transparent, opacity]);
+  }, [map, texture, isBox, silhouette, volume, color, emissive, emissiveIntensity, transparent, opacity]);
 
   // Los materiales y sus texturas clonadas se liberan al recrearse.
   useEffect(
     () => () => {
       const list = Array.isArray(materials) ? materials : [materials];
       for (const m of list) {
-        m.map?.dispose();
+        // La textura del volumen es suya y la libera useVolume.
+        if (m.map && m.map !== volume?.map) m.map.dispose();
         m.dispose();
       }
     },
-    [materials],
+    [materials, volume],
   );
 
   // El material se asigna como PROP de la malla, no como hijo con `attach`.
@@ -361,10 +446,10 @@ export function TexturedMesh({
       castShadow
       receiveShadow
       material={materials}
-      geometry={silhouette ?? undefined}
+      geometry={silhouette ?? volume?.geometry ?? undefined}
       {...meshProps}
     >
-      {silhouette ? null : shape === 'cylinder' ? (
+      {silhouette || volume ? null : shape === 'cylinder' ? (
         <cylinderGeometry args={[length / 2, length / 2, Math.max(0.01, height), 28]} />
       ) : (
         <boxGeometry args={[length, Math.max(0.01, height), width]} />

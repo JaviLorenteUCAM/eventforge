@@ -359,6 +359,7 @@ export function TextureSection({
               <option value="atlas">Despliegue por caras (plantilla)</option>
               <option value="tile">Mosaico repetido en todas las caras</option>
               <option value="silhouette">Silueta: la imagen es la forma del objeto</option>
+              <option value="volume">Volumen: la forma sale de las vistas de la plantilla</option>
             </Select>
           </Field>
 
@@ -370,6 +371,18 @@ export function TextureSection({
               es por los cuatro costados, sin laterales flotando. Los cantos del corte se
               pintan del color del objeto. La plantilla pasa a ser la <strong>vista de
               frente</strong>, que es mucho más fácil de dibujar.
+            </p>
+          ) : null}
+
+          {mode === 'volume' ? (
+            <p className="rounded-lg border border-[color-mix(in_oklab,var(--ef-accent)_35%,transparent)] bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-2.5 py-2 text-[11.5px] leading-relaxed text-ink">
+              Para objetos con forma propia, como una silla gaming. Usa la misma plantilla en
+              cruz, pero cada foto con el <strong>fondo recortado</strong> (PNG transparente o
+              el color de arriba). Las vistas se cruzan para sacar la forma: el frente da el
+              contorno del respaldo, el lateral su inclinación y el grosor, y la de arriba la
+              base. Cada parte se pinta con la foto que la ve de frente, así que la marca sale
+              donde está en la foto. Con frente y un lateral ya funciona; cuantas más vistas,
+              más fiel. Las caras que dejes sin recortar no cuentan.
             </p>
           ) : null}
 

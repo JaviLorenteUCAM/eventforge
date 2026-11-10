@@ -268,8 +268,10 @@ export interface CatalogObject {
  *   tile       -> mosaico que se repite en todas las caras
  *   silhouette -> la imagen es la vista de frente y se extruye: lo sólido pasa
  *                 a ser volumen y lo transparente, aire
+ *   volume     -> la plantilla en cruz con las vistas recortadas: se talla la
+ *                 forma cruzando todas las vistas y se pinta con ellas
  */
-export type TextureMode = 'atlas' | 'tile' | 'silhouette';
+export type TextureMode = 'atlas' | 'tile' | 'silhouette' | 'volume';
 
 /**
  * Material del almacén. Desde la versión 0006 es TAMBIÉN la definición del
