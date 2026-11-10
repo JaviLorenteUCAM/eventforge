@@ -25,6 +25,7 @@ import {
   buildDrawing,
   layoutSheet,
   SCALES,
+  type ZoneStyle,
   toDxf,
   toSvg,
   toSvgPages,
@@ -79,6 +80,7 @@ export function ExportPlanModal({
   const [cables, setCables] = useState(true);
   const [venue, setVenue] = useState(true);
   const [showZones, setShowZones] = useState(true);
+  const [zoneStyle, setZoneStyle] = useState<ZoneStyle>('label');
   const [feeds, setFeeds] = useState(true);
   const [marks, setMarks] = useState(true);
   const [withMaterial, setWithMaterial] = useState(true);
@@ -200,6 +202,7 @@ export function ExportPlanModal({
               cables,
               venue,
               zones: showZones,
+              zoneStyle,
               feeds,
               marks,
               material: withMaterial,
@@ -212,7 +215,7 @@ export function ExportPlanModal({
     [
       open, plan, event, objects, connections, venues, photos, zones, author, material, categoryNames,
       materialByZone, byZone,
-      paper, scale, photo, cables, venue, showZones, feeds, marks, withMaterial, markMissing, view,
+      paper, scale, photo, cables, venue, showZones, zoneStyle, feeds, marks, withMaterial, markMissing, view,
     ],
   );
   const svg = useMemo(() => (drawing ? toSvg(drawing) : ''), [drawing]);
@@ -394,6 +397,21 @@ export function ExportPlanModal({
               disabled={zones.length === 0}
               onChange={(e) => setShowZones(e.target.checked)}
             />
+            {showZones && zones.length > 0 ? (
+              <div className="pl-6">
+                <Segmented
+                  size="sm"
+                  value={zoneStyle}
+                  onChange={setZoneStyle}
+                  layoutId="export-zone-style"
+                  options={[
+                    { value: 'label', label: 'Con nombre' },
+                    { value: 'number', label: 'Número' },
+                    { value: 'color', label: 'Solo color' },
+                  ]}
+                />
+              </div>
+            ) : null}
             <Checkbox
               label="Puntos de luz y de red (E1, R1…)"
               checked={feeds}

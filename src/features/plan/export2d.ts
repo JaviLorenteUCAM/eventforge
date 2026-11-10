@@ -38,6 +38,15 @@ import { modelToPlan, placementOf, type Footprint } from './modelFootprint';
 
 export type Paper = 'A4' | 'A3' | 'A2';
 
+/**
+ * Cómo salen las zonas en el plano:
+ *   · label: el rótulo «1 - Zona Fripozo» (y la descripción) en el centro;
+ *   · number: solo su número, en una esquina de la zona;
+ *   · color: solo el área de color, sin texto.
+ * En los tres casos la leyenda dice el número, el nombre y la superficie.
+ */
+export type ZoneStyle = 'label' | 'number' | 'color';
+
 export interface ExportOptions {
   paper: Paper;
   /** Denominador de la escala (200 = 1:200). Null: la mayor que quepa. */
@@ -47,6 +56,8 @@ export interface ExportOptions {
   venue: boolean;
   /** Zonas marcadas, rotuladas «1 - Zona Fripozo». */
   zones: boolean;
+  /** Cómo se rotulan las zonas (por defecto, con su nombre). */
+  zoneStyle?: ZoneStyle;
   /** Puntos de luz y de red con su símbolo y numerados (E1, R1…). */
   feeds: boolean;
   /** Número de cada objeto en el plano. Sin él queda solo su forma, a escala. */
@@ -467,7 +478,17 @@ export function toSvg(d: Drawing): string {
     );
   }
 
+  const zoneStyle = d.options.zoneStyle ?? 'label';
   for (const z of d.zones) {
+    if (zoneStyle === 'color') continue;
+    if (zoneStyle === 'number') {
+      const b = P(zoneCorner(z.points, z.centre, 4.5 / sh.k));
+      out.push(
+        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="2.6" fill="#fff" stroke="${z.zone.color}" stroke-width="0.5"/>`,
+        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="2.9" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
+      );
+      continue;
+    }
     const c = P(z.centre);
     const label = `${z.zone.number} - ${z.zone.name || 'Zona'}`;
     const lines = wrap((z.zone.description ?? '').trim(), 42, 3);
@@ -571,6 +592,22 @@ function feedSymbol(kind: string, cx: number, cy: number, r: number): string {
     `<path d="M${n(t.x)} ${n(t.y)}L${n(a.x)} ${n(a.y)}M${n(t.x)} ${n(t.y)}L${n(b.x)} ${n(b.y)}M${n(a.x)} ${n(a.y)}L${n(b.x)} ${n(b.y)}" stroke="#000" stroke-width="0.25"/>` +
     [t, a, b].map((p) => `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(0.45 * k)}" fill="#000"/>`).join('')
   );
+}
+
+/**
+ * Dónde va el número de una zona: junto a su esquina de arriba a la
+ * izquierda, metido hacia dentro (hacia el centro) la distancia dada, para
+ * que quede dentro de la zona y no encima del borde.
+ */
+function zoneCorner(points: Pt[], centre: Pt, inset: number): Pt {
+  if (points.length === 0) return centre;
+  const v = points.reduce((best, p) => (p.x + p.y < best.x + best.y ? p : best), points[0]);
+  const dx = centre.x - v.x;
+  const dy = centre.y - v.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return v;
+  const t = Math.min(inset, len * 0.45);
+  return { x: v.x + (dx / len) * t, y: v.y + (dy / len) * t };
 }
 
 /** Leyenda y cajetín. */
@@ -1192,8 +1229,16 @@ export function toDxf(d: Drawing): string {
     g(13, X(t[2].x)); g(23, Y(t[2].y)); g(33, 0);
   }
 
+  const zoneStyle = d.options.zoneStyle ?? 'label';
   for (const z of d.zones) {
     poly('ZONAS', z.points, true);
+    if (zoneStyle === 'color') continue;
+    if (zoneStyle === 'number') {
+      const b = zoneCorner(z.points, z.centre, 4.5 * mm);
+      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (2.6 * mm).toFixed(3));
+      text('ZONAS', b, 2.9 * mm, String(z.zone.number));
+      continue;
+    }
     text('ZONAS', z.centre, 2.8 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'}`);
     wrap((z.zone.description ?? '').trim(), 42, 3).forEach((line, i) =>
       text('ZONAS', { x: z.centre.x, y: z.centre.y + (3.6 + i * 2.7) * mm }, 2 * mm, line),
