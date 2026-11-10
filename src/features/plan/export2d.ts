@@ -586,16 +586,22 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
   out.push(`<text x="${x + 4}" y="${cy}" font-size="3" font-weight="bold" letter-spacing="0.3">LEYENDA</text>`);
   cy += 3;
 
+  // Los objetos solo van en la leyenda si hace falta: con el listado de
+  // material detrás sobran, salvo que estén numerados (los números del plano
+  // necesitan su clave).
+  const withMaterialSheet = d.options.material && (d.input.material?.length ?? 0) > 0;
+  const legend = withMaterialSheet && !d.options.marks ? [] : d.legend;
+
   // Cabecera de la tabla. Las medidas van debajo del nombre: en una columna
   // aparte, en A4 los nombres se quedaban en «Mesa plega…».
   const col = { mark: x + 6.5, name: d.options.marks ? x + 11 : x + 4, qty: x + w - 4 };
-  cy += 3.5;
-  out.push(
+  if (legend.length) cy += 3.5;
+  if (legend.length) out.push(
     `<text x="${col.name}" y="${cy}" font-size="1.9" fill="#555">ELEMENTO · L × A × H (m)</text>`,
     `<text x="${col.qty}" y="${cy}" font-size="1.9" fill="#555" text-anchor="end">UD.</text>`,
     `<path d="M${x + 3} ${cy + 1.2}H${x + w - 3}" stroke="#000" stroke-width="0.15"/>`,
   );
-  cy += 1.5;
+  if (legend.length) cy += 1.5;
 
   // Lo que viene después de la tabla también necesita sitio.
   const kinds = [...new Set(d.cables.map((c) => c.kind))];
@@ -606,7 +612,7 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
     (d.feeds.length ? 7 + d.feeds.length * 4.6 : 0);
   const rowH = 6.4;
   const maxRows = Math.max(0, Math.floor((legendBottom - cy - extra) / rowH));
-  const rows = d.legend.slice(0, d.legend.length > maxRows ? maxRows - 1 : maxRows);
+  const rows = legend.slice(0, legend.length > maxRows ? maxRows - 1 : maxRows);
 
   const fit = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
   const nameChars = Math.floor((col.qty - 6 - col.name) / 1.15);
@@ -624,13 +630,14 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
       `<text x="${col.qty}" y="${cy - 1.2}" font-size="2.1" text-anchor="end">${r.count}</text>`,
     );
   }
-  if (rows.length < d.legend.length) {
+  if (rows.length < legend.length) {
     cy += rowH;
     out.push(
-      `<text x="${col.name}" y="${cy}" font-size="2" fill="#555">… y ${d.legend.length - rows.length} elementos más (ver listado de material)</text>`,
+      `<text x="${col.name}" y="${cy}" font-size="2" fill="#555">… y ${legend.length - rows.length} elementos más (ver listado de material)</text>`,
     );
   }
 
+  if (!legend.length) cy -= 3;
   if (d.zones.length) {
     cy += 7;
     out.push(`<text x="${x + 4}" y="${cy}" font-size="2.4" font-weight="bold">ZONAS</text>`);
@@ -938,6 +945,31 @@ export function materialPages(d: Drawing): string[] {
         `<rect x="${sd.x + 4}" y="${sy - 1}" width="6" height="3" fill="#fdecec"/>`,
         `<text x="${sd.x + 12}" y="${sy + 1.4}" font-size="1.9" fill="#555">No hay suficiente en el almacén</text>`,
       );
+      // La lista de lo que falta, con cuánto falta de cada cosa, hasta donde
+      // empieza el cajetín.
+      sy += 10;
+      out.push(
+        `<text x="${sd.x + 4}" y="${sy}" font-size="2.4" font-weight="bold" fill="#b91c1c">FALTA EN ALMACÉN</text>`,
+        `<text x="${sd.x + sd.w - 4}" y="${sy}" font-size="1.9" fill="#555" text-anchor="end">FALTAN</text>`,
+        `<path d="M${sd.x + 3} ${sy + 1.2}H${sd.x + sd.w - 3}" stroke="#000" stroke-width="0.15"/>`,
+      );
+      const lineH = 4.4;
+      const bottom = sd.y + sd.h - 62 - 6;
+      const room = Math.max(0, Math.floor((bottom - sy - 1.5) / lineH));
+      const list = [...short].sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name, 'es'));
+      const shownList = list.slice(0, list.length > room ? Math.max(0, room - 1) : room);
+      const chars = Math.max(8, Math.floor((sd.w - 22) / 1.1));
+      for (const m of shownList) {
+        sy += lineH;
+        out.push(
+          `<text x="${sd.x + 4}" y="${sy}" font-size="2.1">${esc(m.name.length > chars ? `${m.name.slice(0, chars - 1)}…` : m.name)}</text>`,
+          `<text x="${sd.x + sd.w - 4}" y="${sy}" font-size="2.1" font-weight="bold" fill="#b91c1c" text-anchor="end">${qty(m.missing, m.unit)}</text>`,
+        );
+      }
+      if (shownList.length < list.length) {
+        sy += lineH;
+        out.push(`<text x="${sd.x + 4}" y="${sy}" font-size="1.9" fill="#555">… y ${list.length - shownList.length} más (ver la tabla)</text>`);
+      }
     }
     out.push(...titleBlock(d, sh, plan + p + 1, total, 'LISTADO'));
     out.push(`</svg>`);

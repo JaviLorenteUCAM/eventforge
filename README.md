@@ -782,7 +782,9 @@ escala que cabe. Las cotas generales del recinto solo se dibujan cuando el recin
 
 En el PDF, detrás del plano, van las hojas del **listado de material** del evento, con el mismo
 cajetín: agrupado por categoría, con lo necesario y, si se pide, **lo que no hay en el almacén**
-resaltado con lo que falta, y un resumen.
+resaltado con lo que falta, y un resumen lateral que enumera lo que falta en el almacén y cuánto.
+Con esas hojas en el PDF, la leyenda del plano ya no repite los objetos (salvo si van numerados,
+porque los números necesitan su clave).
 
 Con **Separar el material por zonas**, el listado va por zonas: cada objeto cuenta en la zona
 donde cae su centro (si se solapan, en la de número más bajo), el cableado en las zonas por las
