@@ -89,6 +89,7 @@ const FILES = [
   '0012_silhouette_mode.sql',
   '0013_usb_cabling.sql',
   '0014_volume_mode.sql',
+  '0015_model_floor_offset.sql',
 ];
 let allOk = true;
 
@@ -439,6 +440,23 @@ try {
   allOk = false;
   console.log(`  [31m✗[0m El modo volumen se rechaza: ${err.message}`);
 }
+
+// Altura del suelo del modelo (0015): admite negativos, con un tope razonable.
+try {
+  await db.exec(`update public.warehouse_items set texture_floor_offset=-0.06 where id='${itemId}'`);
+  const r = await db.query(
+    `select texture_floor_offset::float as v from public.warehouse_items where id='${itemId}'`,
+  );
+  if (r.rows[0].v !== -0.06) throw new Error(`guardó ${r.rows[0].v}`);
+  console.log('  [32m✓[0m La altura del suelo del modelo admite valores negativos');
+} catch (err) {
+  allOk = false;
+  console.log(`  [31m✗[0m Altura del suelo del modelo: ${err.message}`);
+}
+await mustFail(
+  'Una altura del suelo del modelo desmesurada se rechaza',
+  `update public.warehouse_items set texture_floor_offset=7 where id='${itemId}'`,
+);
 
 await mustFail(
   'Un modo de textura inválido se rechaza',

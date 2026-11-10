@@ -257,6 +257,12 @@ export interface CatalogObject {
   texture_key_color: string | null;
   /** Margen del recorte: 0 solo el color exacto, 1 se lo lleva todo. */
   texture_key_tolerance: number;
+  /**
+   * Cuánto se sube (positivo) o se hunde (negativo) el modelo, en metros, en
+   * los modos que sacan la forma de la imagen (silueta y volumen). Sirve para
+   * apoyarlo en el suelo cuando la foto deja aire por debajo.
+   */
+  texture_floor_offset: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -318,6 +324,12 @@ export interface WarehouseItem {
   texture_key_color: string | null;
   /** Margen del recorte: 0 solo el color exacto, 1 se lo lleva todo. */
   texture_key_tolerance: number;
+  /**
+   * Cuánto se sube (positivo) o se hunde (negativo) el modelo, en metros, en
+   * los modos que sacan la forma de la imagen (silueta y volumen). Sirve para
+   * apoyarlo en el suelo cuando la foto deja aire por debajo.
+   */
+  texture_floor_offset: number;
   created_at: string;
   updated_at: string;
 }
@@ -347,6 +359,12 @@ export interface WarehouseItemVariant {
   texture_key_color: string | null;
   /** Margen del recorte: 0 solo el color exacto, 1 se lo lleva todo. */
   texture_key_tolerance: number;
+  /**
+   * Cuánto se sube (positivo) o se hunde (negativo) el modelo, en metros, en
+   * los modos que sacan la forma de la imagen (silueta y volumen). Sirve para
+   * apoyarlo en el suelo cuando la foto deja aire por debajo.
+   */
+  texture_floor_offset: number;
   /** ¿Aparece como línea propia en el listado de material del evento? */
   adds_material: boolean;
   /** Con qué nombre aparece ahí. Vacío = el del estilo. */

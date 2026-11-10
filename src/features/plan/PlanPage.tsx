@@ -333,7 +333,8 @@ export function PlanPage() {
               texture_scale: variant.texture_scale, texture_offset_x: variant.texture_offset_x,
               texture_offset_y: variant.texture_offset_y, texture_rotation: variant.texture_rotation,
               texture_key_color: variant.texture_key_color,
-              texture_key_tolerance: variant.texture_key_tolerance }
+              texture_key_tolerance: variant.texture_key_tolerance,
+              texture_floor_offset: variant.texture_floor_offset }
           : base;
       if (!c?.texture_path) continue;
       const url = textureUrls.get(c.texture_path);
@@ -347,6 +348,7 @@ export function PlanPage() {
         rotation: Number(c.texture_rotation) || 0,
         keyColor: c.texture_key_color,
         keyTolerance: Number(c.texture_key_tolerance ?? 0.12),
+        floorOffset: Number(c.texture_floor_offset ?? 0),
         // Medidas de la FICHA DE ORIGEN: son las que definen el reparto de
         // caras dentro de la plantilla, aunque la copia del plano se haya
         // redimensionado.

@@ -32,6 +32,13 @@ export interface TextureSpec {
   keyColor?: string | null;
   /** Cuánto se parecen los píxeles que también se recortan: 0 exacto, 1 todo. */
   keyTolerance?: number;
+  /**
+   * Metros que se sube (o se hunde, si es negativo) la forma sacada de la
+   * imagen. Una silla tallada desde sus fotos puede quedar flotando: las
+   * ruedas son tan finas que no sobreviven al cruce de las vistas, o la foto
+   * deja aire por debajo.
+   */
+  floorOffset?: number;
 }
 
 /**
@@ -437,24 +444,31 @@ export function TexturedMesh({
     [materials, volume],
   );
 
+  // Solo se mueve la forma sacada de la imagen; una caja pintada ya apoya
+  // exacta. Se hace con un grupo y no tocando la geometría, que en el modo
+  // volumen comparte sus datos con las demás copias del mismo material.
+  const lift = silhouette || volume ? Number(texture?.floorOffset) || 0 : 0;
+
   // El material se asigna como PROP de la malla, no como hijo con `attach`.
   // Con `attach="material-0"` R3F intentaría escribir en mesh.material[0], que
   // no existe mientras mesh.material siga siendo un material suelto, y los seis
   // materiales del atlas se perderían en silencio.
   return (
-    <mesh
-      castShadow
-      receiveShadow
-      material={materials}
-      geometry={silhouette ?? volume?.geometry ?? undefined}
-      {...meshProps}
-    >
-      {silhouette || volume ? null : shape === 'cylinder' ? (
-        <cylinderGeometry args={[length / 2, length / 2, Math.max(0.01, height), 28]} />
-      ) : (
-        <boxGeometry args={[length, Math.max(0.01, height), width]} />
-      )}
-    </mesh>
+    <group position={[0, lift, 0]}>
+      <mesh
+        castShadow
+        receiveShadow
+        material={materials}
+        geometry={silhouette ?? volume?.geometry ?? undefined}
+        {...meshProps}
+      >
+        {silhouette || volume ? null : shape === 'cylinder' ? (
+          <cylinderGeometry args={[length / 2, length / 2, Math.max(0.01, height), 28]} />
+        ) : (
+          <boxGeometry args={[length, Math.max(0.01, height), width]} />
+        )}
+      </mesh>
+    </group>
   );
 }
 

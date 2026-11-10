@@ -19,6 +19,7 @@ export interface TextureFields {
   texture_rotation: number;
   texture_key_color: string | null;
   texture_key_tolerance: number;
+  texture_floor_offset: number;
 }
 
 /**
@@ -193,6 +194,7 @@ export function TextureSection({
   rotation,
   keyColor,
   keyTolerance,
+  floorOffset,
   folder = 'objetos',
   compact = false,
   onPathChange,
@@ -211,6 +213,7 @@ export function TextureSection({
   rotation: number;
   keyColor: string | null;
   keyTolerance: number;
+  floorOffset: number;
   /** Carpeta dentro del bucket de texturas. */
   folder?: string;
   /** Versión reducida para el panel lateral del plano. */
@@ -372,6 +375,22 @@ export function TextureSection({
               pintan del color del objeto. La plantilla pasa a ser la <strong>vista de
               frente</strong>, que es mucho más fácil de dibujar.
             </p>
+          ) : null}
+
+          {mode === 'volume' || mode === 'silhouette' ? (
+            <Field
+              label="Altura del suelo del modelo"
+              hint="Si el modelo flota, ponlo en negativo para bajarlo; en positivo lo sube. Vale para todos los que se coloquen de este material."
+            >
+              <NumberInput
+                value={floorOffset}
+                onChange={(v) => onFieldChange({ texture_floor_offset: Math.max(-2, Math.min(2, v)) })}
+                unit="m"
+                step={0.01}
+                min={-2}
+                max={2}
+              />
+            </Field>
           ) : null}
 
           {mode === 'volume' ? (

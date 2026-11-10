@@ -76,6 +76,7 @@ export function CatalogObjectModal({
     texture_rotation: 0,
     texture_key_color: null as string | null,
     texture_key_tolerance: 0.12,
+    texture_floor_offset: 0,
   });
   const [texturePath, setTexturePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +110,7 @@ export function CatalogObjectModal({
       texture_rotation: Number(object?.texture_rotation ?? 0),
       texture_key_color: object?.texture_key_color ?? null,
       texture_key_tolerance: Number(object?.texture_key_tolerance ?? 0.12),
+      texture_floor_offset: Number(object?.texture_floor_offset ?? 0),
     });
     setTexturePath(object?.texture_path ?? null);
     setError(null);
@@ -318,6 +320,7 @@ export function CatalogObjectModal({
             rotation={form.texture_rotation}
             keyColor={form.texture_key_color}
             keyTolerance={form.texture_key_tolerance}
+            floorOffset={form.texture_floor_offset}
             folder="biblioteca"
             onPathChange={setTexturePath}
             onFieldChange={(patch: Partial<TextureFields>) => setForm((f) => ({ ...f, ...patch }))}

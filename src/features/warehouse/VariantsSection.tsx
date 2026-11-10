@@ -220,6 +220,7 @@ const EMPTY = {
   texture_rotation: 0,
   texture_key_color: null as string | null,
   texture_key_tolerance: 0.12,
+  texture_floor_offset: 0,
   notes: '',
 };
 
@@ -257,6 +258,7 @@ function VariantModal({
             texture_rotation: Number(variant.texture_rotation),
             texture_key_color: variant.texture_key_color,
             texture_key_tolerance: Number(variant.texture_key_tolerance ?? 0.12),
+            texture_floor_offset: Number(variant.texture_floor_offset ?? 0),
             notes: variant.notes,
           }
         : EMPTY,
@@ -399,6 +401,7 @@ function VariantModal({
             rotation={form.texture_rotation}
             keyColor={form.texture_key_color}
             keyTolerance={form.texture_key_tolerance}
+            floorOffset={form.texture_floor_offset}
             folder="estilos"
             onPathChange={setTexturePath}
             onFieldChange={(patch: Partial<TextureFields>) => setForm((f) => ({ ...f, ...patch }))}

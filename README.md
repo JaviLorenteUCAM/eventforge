@@ -176,6 +176,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 12 | `supabase/migrations/0012_silhouette_mode.sql` | Modo silueta: la imagen es la forma del objeto |
 | 13 | `supabase/migrations/0013_usb_cabling.sql` | Cableado USB y categoría de periféricos |
 | 14 | `supabase/migrations/0014_volume_mode.sql` | Modo volumen: la forma sale de las vistas de la plantilla |
+| 15 | `supabase/migrations/0015_model_floor_offset.sql` | Altura del suelo del modelo (silueta y volumen) |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -581,7 +582,8 @@ eventforge/
 │       ├── 0011_texture_transparency.sql
 │       ├── 0012_silhouette_mode.sql   # la imagen es la forma del objeto
 │       ├── 0013_usb_cabling.sql       # cableado USB, categoría periféricos
-│       └── 0014_volume_mode.sql       # modo de textura «volumen»
+│       ├── 0014_volume_mode.sql       # modo de textura «volumen»
+│       └── 0015_model_floor_offset.sql # altura del suelo del modelo
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -847,6 +849,13 @@ marca— sale fiel.
 
 Tallar una silla cuesta unas décimas de segundo la primera vez; las demás sillas iguales del
 plano reutilizan el cálculo.
+
+**Altura del suelo del modelo.** Un modelo tallado puede quedar flotando: si la foto deja aire
+por debajo, o porque las ruedas son tan finas que no sobreviven al cruce de las vistas y lo más
+bajo que queda es la base. En los modos *Silueta* y *Volumen* la ficha tiene un campo **Altura del
+suelo del modelo**, en metros: en negativo baja el modelo, en positivo lo sube. Se guarda en la
+ficha (material, estilo u objeto de catálogo), así que se ajusta una vez y vale para todas las
+copias de todos los planos.
 
 ### Orientación: girar un objeto en los tres ejes
 

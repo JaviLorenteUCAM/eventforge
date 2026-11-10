@@ -387,6 +387,7 @@ const EMPTY_FORM = {
   texture_rotation: 0,
   texture_key_color: null as string | null,
   texture_key_tolerance: 0.12,
+  texture_floor_offset: 0,
 };
 
 /**
@@ -451,6 +452,7 @@ export function ItemFormModal({
             texture_rotation: Number(item.texture_rotation),
             texture_key_color: item.texture_key_color,
             texture_key_tolerance: Number(item.texture_key_tolerance ?? 0.12),
+            texture_floor_offset: Number(item.texture_floor_offset ?? 0),
           }
         : EMPTY_FORM,
     );
@@ -684,6 +686,7 @@ export function ItemFormModal({
             rotation={form.texture_rotation}
             keyColor={form.texture_key_color}
             keyTolerance={form.texture_key_tolerance}
+            floorOffset={form.texture_floor_offset}
             folder="almacen"
             onPathChange={setTexturePath}
             onFieldChange={(patch: Partial<TextureFields>) => setForm((f) => ({ ...f, ...patch }))}
