@@ -181,6 +181,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 17 | `supabase/migrations/0017_background_models.sql` | Modelo 3D del recinto, pegado a la imagen de fondo |
 | 18 | `supabase/migrations/0018_background_model_adjust.sql` | Ajuste del modelo del recinto: desplazamiento, giro y escala |
 | 19 | `supabase/migrations/0019_plan_zones.sql` | Zonas del plano (número, nombre, color y pines) |
+| 20 | `supabase/migrations/0020_zone_description.sql` | Descripción opcional de las zonas |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -591,7 +592,8 @@ eventforge/
 │       ├── 0016_object_models.sql     # modelos 3D (.glb) y bucket models
 │       ├── 0017_background_models.sql # modelo 3D del recinto en la capa de fondo
 │       ├── 0018_background_model_adjust.sql # ajuste del modelo sobre su imagen
-│       └── 0019_plan_zones.sql        # zonas marcadas del plano
+│       ├── 0019_plan_zones.sql        # zonas marcadas del plano
+│       └── 0020_zone_description.sql  # descripción de las zonas
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -740,10 +742,13 @@ base de datos, de modo que al deshacer el resto del equipo también ve el result
 
 ### Zonas
 
-La herramienta **Zona** de la barra marca un área con **cuatro clics** (con el ajuste a la rejilla;
-Mayús lo invierte, Esc cancela). Cada zona lleva **número, nombre y color**, se ve en el 2D con
+La herramienta **Zona** de la barra marca un área con **un clic por pin, tantos como haga falta**
+(con el ajuste a la rejilla; Mayús lo invierte). Se cierra pulsando el primer pin, con doble clic o
+con Intro; Retroceso quita el último pin y Esc cancela. Cada zona lleva **número, nombre, color y
+una descripción opcional**, se ve en el 2D con
 su rótulo («1 - Zona Fripozo») y su superficie, y en el 3D pintada en el suelo. Seleccionada, se
-cambia de forma arrastrando sus pines y se mueve entera arrastrando el rótulo; el nombre, el
+cambia de forma arrastrando sus pines, el punto medio de cada lado añade un pin, el doble clic en
+un pin lo quita y arrastrando el rótulo se mueve entera; el nombre, el
 número y el color se editan en el panel, que sin nada seleccionado muestra la lista de zonas. Las
 zonas viajan con el plano al duplicar el evento y al guardar o cargar un escenario.
 
@@ -754,10 +759,12 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
 (1:50, 1:100, 1:200…) o la que se elija— con:
 
 - el recinto con sus **cotas** generales y **escala gráfica**;
-- los objetos dibujados en planta, cada uno con una **marca numerada**; los iguales (mismo
-  nombre y medidas) comparten número y la **leyenda** dice cuántos hay y sus medidas;
+- los objetos dibujados en planta a escala, con una **marca numerada** opcional; los iguales
+  (mismo nombre y medidas) comparten número y la **leyenda** dice cuántos hay y sus medidas. Sin
+  numerar, el plano queda limpio, solo con la forma de cada objeto;
 - el **cableado** por tipos, con su leyenda;
-- las **zonas** rotuladas («1 - Zona Fripozo») con su superficie en la leyenda;
+- las **zonas** rotuladas («1 - Zona Fripozo») con su descripción debajo, y su superficie en la
+  leyenda;
 - los **puntos de luz y de red** con su símbolo (círculo con el rayo; cuadrado con tres nodos) y
   numerados (E1, E2… R1, R2…, de arriba abajo y de izquierda a derecha), en una sección
   *Suministros* de la leyenda con su nombre;
@@ -767,6 +774,10 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
   de suelo), así que vale para cualquier modelo;
 - la **foto de fondo** en gris, si se quiere;
 - el **cajetín**: evento, plano, lugar, fecha, escala, formato y autor.
+
+En el PDF, detrás del plano, van las hojas del **listado de material** del evento, con el mismo
+cajetín: agrupado por categoría, con lo necesario y, si se pide, **lo que no hay en el almacén**
+resaltado con lo que falta, y un resumen.
 
 Formatos: **PDF** (por la impresión del navegador, vectorial y a escala exacta: «Guardar como
 PDF» al 100 %), **SVG** y **DXF** para AutoCAD y cualquier programa de CAD, en metros reales y
@@ -1058,8 +1069,9 @@ símbolo, tanto en 2D como en 3D:
 La
 longitud se estima por la distancia **real en el espacio** —planta y desnivel, tomando el
 centro de cada objeto según su altura sobre el suelo— más un 20 % de holgura, y se puede
-corregir a mano. Cada cable guarda tipo, longitud, color, origen y destino, y **suma metros al listado
-de material**.
+corregir a mano. Cada cable guarda tipo, color, origen y destino. En el **listado de material**
+el cableado ya no lleva metros ni cantidades: sale una vez por tipo («Cableado eléctrico»,
+«Cableado de red», «Cableado de señal», «Cableado USB»).
 
 Las regletas tienen número de tomas; los switches, número de puertos; y los aparatos de
 imagen, **salidas de señal**.
@@ -1108,10 +1120,10 @@ de inicio y fin, responsables, color y notas, y puede **duplicarse a otro día**
 independiente.
 
 ### Listado de material
-Se genera solo a partir del plano: agrupa los objetos por ficha de almacén y los cables por
-tipo, y lo cruza con las existencias mostrando **necesario / en almacén / faltan**. Los tres
-cableados suman sus metros igual: cada tipo de cable —manguera, Cat6, HDMI— es una línea
-propia del listado.
+Se genera solo a partir del plano: agrupa los objetos por ficha de almacén y lo cruza con las
+existencias mostrando **necesario / en almacén / faltan**. Los puntos de luz y de red (la
+acometida de la sala) y los textos del plano no cuentan como material. El cableado va aparte,
+al final y **sin metros ni cantidades**: una línea por cada tipo que aparezca en el plano.
 
 Arriba del todo aparece **«Falta material»**: la lista concreta de lo que hay que conseguir,
 con cuántas unidades necesitas, cuántas tienes y cuántas te faltan. Exportable a CSV

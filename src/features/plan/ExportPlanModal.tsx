@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileCode2, FileDown, Printer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileCode2, FileDown, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Checkbox, Field, Modal, Segmented, Select } from '@/components/ui';
-import type { EventRow, Plan, PlanBackground, PlanConnection, PlanObject, PlanZone } from '@/lib/types';
+import type {
+  EventRow,
+  MaterialNeed,
+  Plan,
+  PlanBackground,
+  PlanConnection,
+  PlanObject,
+  PlanZone,
+} from '@/lib/types';
 import { downloadBlob, slugify } from '@/lib/utils';
 import {
   buildDrawing,
   layoutSheet,
   toDxf,
   toSvg,
+  toSvgPages,
   type ExportOptions,
   type Paper,
 } from './export2d';
@@ -32,6 +41,8 @@ export function ExportPlanModal({
   backgroundUrls,
   backgroundModelUrls,
   zones,
+  material,
+  categoryNames,
   author,
 }: {
   open: boolean;
@@ -44,6 +55,8 @@ export function ExportPlanModal({
   backgroundUrls: Map<string, string>;
   backgroundModelUrls: Map<string, string>;
   zones: PlanZone[];
+  material: MaterialNeed[];
+  categoryNames: Map<string, string>;
   author: string;
 }) {
   const [paper, setPaper] = useState<Paper>('A3');
@@ -53,6 +66,10 @@ export function ExportPlanModal({
   const [venue, setVenue] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [feeds, setFeeds] = useState(true);
+  const [marks, setMarks] = useState(true);
+  const [withMaterial, setWithMaterial] = useState(true);
+  const [markMissing, setMarkMissing] = useState(true);
+  const [page, setPage] = useState(0);
 
   const visible = useMemo(() => backgrounds.filter((b) => b.visible), [backgrounds]);
 
@@ -121,27 +138,46 @@ export function ExportPlanModal({
               photos: photo ? photos : [],
               zones,
               author,
+              material,
+              categoryNames,
             },
-            { paper, scale, photo, cables, venue, zones: showZones, feeds } satisfies ExportOptions,
+            {
+              paper,
+              scale,
+              photo,
+              cables,
+              venue,
+              zones: showZones,
+              feeds,
+              marks,
+              material: withMaterial,
+              markMissing,
+            } satisfies ExportOptions,
           )
         : null,
-    [open, plan, event, objects, connections, venues, photos, zones, author, paper, scale, photo, cables, venue, showZones, feeds],
+    [
+      open, plan, event, objects, connections, venues, photos, zones, author, material, categoryNames,
+      paper, scale, photo, cables, venue, showZones, feeds, marks, withMaterial, markMissing,
+    ],
   );
   const svg = useMemo(() => (drawing ? toSvg(drawing) : ''), [drawing]);
+  const pages = useMemo(() => (drawing ? toSvgPages(drawing) : []), [drawing]);
+  const shown = Math.min(page, Math.max(0, pages.length - 1));
   const sheet = useMemo(() => (drawing ? layoutSheet(drawing) : null), [drawing]);
 
   const [preview, setPreview] = useState<string | null>(null);
   useEffect(() => {
-    if (!svg) return;
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const current = pages[shown];
+    if (!current) return;
+    const url = URL.createObjectURL(new Blob([current], { type: 'image/svg+xml' }));
     setPreview(url);
     return () => URL.revokeObjectURL(url);
-  }, [svg]);
+  }, [pages, shown]);
 
   const fileName = slugify(`plano ${event?.name ?? ''} ${plan.name}`) || 'plano';
 
   function printPdf() {
-    if (!svg || !sheet) return;
+    if (!pages.length || !sheet) return;
     // Se imprime desde un marco oculto con la hoja a su tamaño exacto: el
     // navegador lo guarda como PDF vectorial y a escala.
     const iframe = document.createElement('iframe');
@@ -157,7 +193,9 @@ export function ExportPlanModal({
       `<!doctype html><html><head><meta charset="utf-8"><title>${fileName}</title>` +
         `<style>@page{size:${sheet.w}mm ${sheet.h}mm;margin:0}html,body{margin:0;padding:0}` +
         `svg{display:block;width:${sheet.w}mm;height:${sheet.h}mm}</style></head>` +
-        `<body>${svg.replace(/^<\?xml[^>]*>\s*/, '')}</body></html>`,
+        `<body>${pages
+          .map((p, i) => `<div style="${i < pages.length - 1 ? 'page-break-after:always;break-after:page' : ''}">${p.replace(/^<\?xml[^>]*>\s*/, '')}</div>`)
+          .join('')}</body></html>`,
     );
     doc.close();
     const win = iframe.contentWindow;
@@ -195,7 +233,7 @@ export function ExportPlanModal({
             icon={<FileDown className="size-4" />}
             onClick={() => downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${fileName}.svg`)}
           >
-            SVG
+            SVG (plano)
           </Button>
           <Button variant="primary" icon={<Printer className="size-4" />} onClick={printPdf}>
             PDF
@@ -244,6 +282,24 @@ export function ExportPlanModal({
             />
             <Checkbox label="Cableado" checked={cables} onChange={(e) => setCables(e.target.checked)} />
             <Checkbox
+              label="Numerar los objetos"
+              checked={marks}
+              onChange={(e) => setMarks(e.target.checked)}
+            />
+            <Checkbox
+              label="Hoja con el material necesario (en el PDF)"
+              checked={withMaterial}
+              disabled={material.length === 0}
+              onChange={(e) => setWithMaterial(e.target.checked)}
+            />
+            <Checkbox
+              label="Marcar lo que falta en almacén"
+              checked={markMissing}
+              disabled={!withMaterial || material.length === 0}
+              onChange={(e) => setMarkMissing(e.target.checked)}
+              className="pl-6"
+            />
+            <Checkbox
               label="Recinto 3D (pilares y cubiertas)"
               checked={venue}
               disabled={venues.length === 0}
@@ -258,9 +314,35 @@ export function ExportPlanModal({
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-line bg-white">
-          {preview ? (
-            <img src={preview} alt="Vista previa del plano" className="block w-full" />
+        <div className="min-w-0">
+          <div className="overflow-hidden rounded-lg border border-line bg-white">
+            {preview ? (
+              <img src={preview} alt="Vista previa del plano" className="block w-full" />
+            ) : null}
+          </div>
+          {pages.length > 1 ? (
+            <div className="mt-2 flex items-center justify-center gap-2 text-[12.5px] text-muted">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<ChevronLeft className="size-4" />}
+                disabled={shown === 0}
+                onClick={() => setPage(shown - 1)}
+              >
+                Anterior
+              </Button>
+              <span className="num">
+                Hoja {shown + 1} de {pages.length} · {shown === 0 ? 'plano' : 'material'}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={shown >= pages.length - 1}
+                onClick={() => setPage(shown + 1)}
+              >
+                Siguiente <ChevronRight className="size-4" />
+              </Button>
+            </div>
           ) : null}
         </div>
       </div>

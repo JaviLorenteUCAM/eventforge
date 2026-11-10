@@ -82,7 +82,7 @@ interface Props {
   zones: PlanZone[];
   selectedZoneId: string | null;
   onSelectZone: (id: string | null) => void;
-  /** Al poner el cuarto pin de una zona nueva. */
+  /** Al cerrar una zona nueva (tres pines o más). */
   onCreateZone: (points: Waypoint[]) => void;
   /** Al soltar un pin o la zona entera tras moverla. */
   onZoneCommit: (id: string, points: Waypoint[]) => void;
@@ -386,17 +386,22 @@ export function Editor2D({
       return;
     }
 
-    // Zona: un clic por pin; al cuarto, se crea.
+    // Zona: un clic por pin, tantos como haga falta. Se cierra pulsando el
+    // primer pin, con doble clic (el segundo clic cae sobre el último pin) o
+    // con Intro; hacen falta al menos tres.
     if (tool === 'zone') {
       const p = zonePoint(e);
-      const draft = [...zoneDraft, p];
-      if (draft.length >= 4) {
-        onCreateZone(draft);
-        setZoneDraft([]);
-        setZoneHover(null);
-      } else {
-        setZoneDraft(draft);
+      const near = 10 / zoom;
+      const first = zoneDraft[0];
+      const last = zoneDraft[zoneDraft.length - 1];
+      const onFirst = first && Math.hypot(p.x - first.x, p.y - first.y) <= near;
+      const onLast = last && Math.hypot(p.x - last.x, p.y - last.y) <= near * 0.6;
+      if (zoneDraft.length >= 3 && (onFirst || onLast)) {
+        finishZone();
+        return;
       }
+      if (onLast) return;
+      setZoneDraft([...zoneDraft, p]);
       return;
     }
 
@@ -721,7 +726,10 @@ export function Editor2D({
     }
 
     if (drag.kind === 'zone-pin') {
-      onZoneCommit(drag.id, drag.points);
+      const z = zones.find((q) => q.id === drag.id);
+      const before = JSON.stringify((z?.points ?? []).map((p) => [Number(p.x), Number(p.y)]));
+      const after = JSON.stringify(drag.points.map((p) => [p.x, p.y]));
+      if (before !== after) onZoneCommit(drag.id, drag.points);
     }
     if (drag.kind === 'zone-move' && (drag.dx !== 0 || drag.dy !== 0)) {
       const z = zones.find((q) => q.id === drag.id);
@@ -810,6 +818,35 @@ export function Editor2D({
     if (zoneDraft.length) setZoneDraft([]);
     if (zoneHover) setZoneHover(null);
   }
+
+  function finishZone() {
+    if (zoneDraft.length >= 3) onCreateZone(zoneDraft);
+    setZoneDraft([]);
+    setZoneHover(null);
+  }
+
+  // Intro cierra la zona y Retroceso quita el último pin. Se escucha antes que
+  // los atajos de la página: Retroceso no debe borrar lo que esté seleccionado.
+  const finishRef = useRef(finishZone);
+  finishRef.current = finishZone;
+  useEffect(() => {
+    if (tool !== 'zone' || zoneDraft.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select')) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finishRef.current();
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setZoneDraft((d) => d.slice(0, -1));
+      }
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
+  }, [tool, zoneDraft.length]);
 
   /** Punto para un pin, con el ajuste a la rejilla si toca (Mayús lo invierte). */
   function zonePoint(e: React.PointerEvent): Waypoint {
@@ -1137,6 +1174,35 @@ export function Editor2D({
                     {label}
                   </text>
                 </g>
+                {/* Punto medio de cada lado: arrastrarlo añade un pin ahí. */}
+                {isSel && drag?.kind !== 'zone-pin'
+                  ? points.map((p, i) => {
+                      const q = points[(i + 1) % points.length];
+                      const m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+                      return (
+                        <circle
+                          key={`m${i}`}
+                          cx={m.x}
+                          cy={m.y}
+                          r={4 / zoom}
+                          fill="var(--ef-canvas)"
+                          stroke={z.color}
+                          strokeWidth={strokePx * 1.5}
+                          className="cursor-copy"
+                          onPointerDown={(e) => {
+                            if (e.button !== 0) return;
+                            e.stopPropagation();
+                            const base = points.map((r) => ({ x: r.x, y: r.y }));
+                            base.splice(i + 1, 0, { x: round(m.x, 3), y: round(m.y, 3) });
+                            setDrag({ kind: 'zone-pin', id: z.id, index: i + 1, points: base });
+                            (e.target as Element).setPointerCapture?.(e.pointerId);
+                          }}
+                        >
+                          <title>Arrastra para añadir un punto</title>
+                        </circle>
+                      );
+                    })
+                  : null}
                 {isSel
                   ? points.map((p, i) => (
                       <circle
@@ -1154,11 +1220,38 @@ export function Editor2D({
                           setDrag({ kind: 'zone-pin', id: z.id, index: i, points: z.points.map((q) => ({ x: Number(q.x), y: Number(q.y) })) });
                           (e.target as Element).setPointerCapture?.(e.pointerId);
                         }}
-                      />
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          // Con doble clic se quita el pin; una zona no baja de tres.
+                          if (z.points.length <= 3) return;
+                          onZoneCommit(
+                            z.id,
+                            z.points
+                              .filter((_, k) => k !== i)
+                              .map((q) => ({ x: Number(q.x), y: Number(q.y) })),
+                          );
+                        }}
+                      >
+                        <title>Arrastra para mover · doble clic para quitarlo</title>
+                      </circle>
                     ))
                   : null}
+                {z.description ? (
+                  <text
+                    x={c.x}
+                    y={c.y + chipH * 0.95}
+                    fontSize={10.5 / zoom}
+                    textAnchor="middle"
+                    dominantBaseline="hanging"
+                    fill="var(--ef-text)"
+                    fillOpacity={0.8}
+                    pointerEvents="none"
+                  >
+                    {z.description.length > 60 ? `${z.description.slice(0, 59)}…` : z.description}
+                  </text>
+                ) : null}
                 {isSel ? (
-                  <g transform={`translate(${c.x},${c.y + chipH})`}>
+                  <g transform={`translate(${c.x},${c.y + chipH * (z.description ? 1.9 : 1)})`}>
                     <MeasureChip zoom={zoom} rotation={0} text={`${fmtNum(polygonArea(points), 1)} m²`} />
                   </g>
                 ) : null}
@@ -1179,6 +1272,9 @@ export function Editor2D({
               />
               {zoneDraft.map((p, i) => (
                 <g key={i}>
+                  {i === 0 && zoneDraft.length >= 3 ? (
+                    <circle cx={p.x} cy={p.y} r={11 / zoom} fill="none" stroke="var(--ef-cyan)" strokeWidth={strokePx * 1.5} />
+                  ) : null}
                   <circle cx={p.x} cy={p.y} r={6 / zoom} fill="var(--ef-cyan)" stroke="var(--ef-canvas)" strokeWidth={strokePx * 1.5} />
                   <text x={p.x} y={p.y} fontSize={8 / zoom} textAnchor="middle" dominantBaseline="central" fill="var(--ef-canvas)" fontWeight={700}>
                     {i + 1}
@@ -1608,11 +1704,6 @@ export function Editor2D({
                 const pts = over
                   ? [...drag.points, { x: Number(over.x), y: Number(over.y) }]
                   : drag.points;
-                let metros = 0;
-                for (let i = 1; i < pts.length; i++) {
-                  metros += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-                }
-                const tip = pts[pts.length - 1];
                 return (
                   <g pointerEvents="none">
                     <path
@@ -1636,9 +1727,6 @@ export function Editor2D({
                         transform={`rotate(${Number(over.rotation)}, ${Number(over.x)}, ${Number(over.y)})`}
                       />
                     ) : null}
-                    <g transform={`translate(${tip.x},${tip.y - 16 / zoom})`}>
-                      <MeasureChip zoom={zoom} rotation={0} accent text={`${fmtNum(metros, 2)} m`} />
-                    </g>
                   </g>
                 );
               })()

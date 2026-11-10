@@ -54,6 +54,8 @@ export function MaterialPage() {
   );
 
   const categoryName = (id: string | null) => (id ? (categoryById.get(id)?.name ?? 'Otros') : 'Otros');
+  /** El cableado va en su propio grupo, al final. */
+  const groupName = (n: (typeof needs)[number]) => (n.cabling ? 'Cableado' : categoryName(n.categoryId));
 
   const filtered = useMemo(() => {
     const q = normalize(search);
@@ -68,10 +70,13 @@ export function MaterialPage() {
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filtered>();
     for (const n of filtered) {
-      const key = categoryName(n.categoryId);
+      const key = groupName(n);
       map.set(key, [...(map.get(key) ?? []), n]);
     }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'));
+    return [...map.entries()].sort(
+      (a, b) =>
+        Number(a[0] === 'Cableado') - Number(b[0] === 'Cableado') || a[0].localeCompare(b[0], 'es'),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, categoryById]);
 
@@ -191,6 +196,14 @@ export function MaterialPage() {
 
               <div className="divide-y divide-[var(--ef-line)]">
                 {list.map((n) => {
+                  if (n.cabling) {
+                    return (
+                      <div key={n.key} className="flex items-center gap-3 px-4 py-3">
+                        <p className="min-w-[180px] flex-1 text-[13.5px] text-ink">{n.name}</p>
+                        <span className="text-[12px] text-dim">según el plano</span>
+                      </div>
+                    );
+                  }
                   const pct = n.needed > 0 ? Math.min(100, (n.available / n.needed) * 100) : 100;
                   return (
                     <div key={n.key} className="flex flex-wrap items-center gap-3 px-4 py-3">

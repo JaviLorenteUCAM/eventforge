@@ -9,6 +9,7 @@ import {
   Input,
   NumberInput,
   Select,
+  Textarea,
 } from '@/components/ui';
 import { useItemVariants, useWarehouseItems } from '@/data/warehouse';
 import {
@@ -688,19 +689,11 @@ function ConnectionInspector({
             className="h-9"
           />
         </Field>
-        <Field label="Longitud" hint="Se suma al listado de material.">
-          <NumberInput
-            value={Number(connection.length_m)}
-            onChange={(v) => onCommit({ length_m: Math.max(0, v) })}
-            unit="m"
-            step={0.5}
-          />
-        </Field>
         <Field label="Color">
           <ColorPicker value={connection.color} onChange={(c) => onCommit({ color: c })} />
         </Field>
-        <p className="num text-[11.5px] text-dim">
-          Longitud registrada: {fmtNum(Number(connection.length_m), 2)} m
+        <p className="text-[11.5px] text-dim">
+          En el listado de material el cableado sale una sola vez por tipo, sin metros.
         </p>
       </Section>
 
@@ -736,10 +729,12 @@ function ZoneInspector({
   onDelete: () => void;
 }) {
   const [name, setName] = useState(zone.name);
+  const [description, setDescription] = useState(zone.description ?? '');
   const [editing, setEditing] = useState(zone.id);
   if (editing !== zone.id) {
     setEditing(zone.id);
     setName(zone.name);
+    setDescription(zone.description ?? '');
   }
   const area = polygonArea((zone.points ?? []).map((p) => ({ x: Number(p.x), y: Number(p.y) })));
 
@@ -770,11 +765,24 @@ function ZoneInspector({
             />
           </Field>
         </div>
+        <Field label="Descripción" hint="Opcional. Sale bajo el rótulo en el plano exportado.">
+          <Textarea
+            value={description}
+            maxLength={500}
+            rows={2}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={() => {
+              if (description !== (zone.description ?? '')) onChange({ description: description.trim() });
+            }}
+            placeholder="Stand con degustación y photocall"
+          />
+        </Field>
         <p className="rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-[12.5px] text-ink">
           En el plano exportado:{' '}
           <strong>
             {zone.number} - {name.trim() || 'Zona'}
           </strong>
+          {description.trim() ? <span className="block text-[11.5px] text-muted">{description.trim()}</span> : null}
         </p>
         <Field label="Color">
           <div className="flex flex-wrap gap-1.5">
@@ -794,7 +802,8 @@ function ZoneInspector({
         </Field>
         <p className="num text-[12px] text-muted">Superficie {fmtNum(area, 1)} m²</p>
         <p className="text-[12px] text-dim">
-          Arrastra los pines para cambiar la forma, o el rótulo para moverla entera.
+          Arrastra los pines para cambiar la forma o el rótulo para moverla entera. El punto medio
+          de cada lado añade un pin; doble clic en un pin lo quita.
         </p>
       </Section>
       <div className="mt-auto border-t border-line p-3">
@@ -875,8 +884,8 @@ function PlanInspector({
       <Section title="Zonas">
         {zones.length === 0 ? (
           <p className="text-[12px] text-dim">
-            Con la herramienta <strong className="text-muted">Zona</strong> de la barra, cuatro clics
-            marcan un área con número y nombre, que sale rotulada en el plano exportado.
+            Con la herramienta <strong className="text-muted">Zona</strong> de la barra, un clic por
+            pin marca un área con número y nombre, que sale rotulada en el plano exportado.
           </p>
         ) : (
           <ul className="space-y-1">

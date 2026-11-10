@@ -4,6 +4,7 @@ import {
   OBJECT_KIND_LABEL,
   type ConnectionKind,
   type EventRow,
+  type MaterialNeed,
   type Plan,
   type PlanBackground,
   type PlanConnection,
@@ -48,6 +49,12 @@ export interface ExportOptions {
   zones: boolean;
   /** Puntos de luz y de red con su símbolo y numerados (E1, R1…). */
   feeds: boolean;
+  /** Número de cada objeto en el plano. Sin él queda solo su forma, a escala. */
+  marks: boolean;
+  /** Hojas con el listado de material del evento detrás del plano. */
+  material: boolean;
+  /** En ese listado, marcar lo que no hay en el almacén. */
+  markMissing: boolean;
 }
 
 export interface ExportInput {
@@ -61,6 +68,10 @@ export interface ExportInput {
   photos: { background: PlanBackground; href: string }[];
   zones: PlanZone[];
   author: string;
+  /** Listado de material del plano (computeMaterialNeeds). */
+  material?: MaterialNeed[];
+  /** Nombre de cada categoría, por su id. */
+  categoryNames?: Map<string, string>;
 }
 
 type Pt = { x: number; y: number };
@@ -421,7 +432,7 @@ export function toSvg(d: Drawing): string {
 
   // Marcas (encima de todo, para que se lean)
   for (const it of d.items) {
-    if (it.mark == null || FEED.has(it.object.kind)) continue;
+    if (!d.options.marks || it.mark == null || FEED.has(it.object.kind)) continue;
     const c = P({ x: Number(it.object.x), y: Number(it.object.y) });
     const r = it.mark >= 100 ? 2.4 : 2;
     out.push(
@@ -440,10 +451,17 @@ export function toSvg(d: Drawing): string {
   for (const z of d.zones) {
     const c = P(z.centre);
     const label = `${z.zone.number} - ${z.zone.name || 'Zona'}`;
-    const wl = label.length * 1.6 + 4;
+    const lines = wrap((z.zone.description ?? '').trim(), 42, 3);
+    const wl = Math.max(label.length * 1.6, ...lines.map((l) => l.length * 1.1)) + 4;
+    const hl = 5.2 + lines.length * 2.7;
+    const top = c.y - hl / 2;
     out.push(
-      `<rect x="${n(c.x - wl / 2)}" y="${n(c.y - 2.6)}" width="${n(wl)}" height="5.2" rx="1" fill="#fff" stroke="${z.zone.color}" stroke-width="0.4"/>`,
-      `<text x="${n(c.x)}" y="${n(c.y)}" font-size="2.8" font-weight="bold" text-anchor="middle" dominant-baseline="central">${esc(label)}</text>`,
+      `<rect x="${n(c.x - wl / 2)}" y="${n(top)}" width="${n(wl)}" height="${n(hl)}" rx="1" fill="#fff" stroke="${z.zone.color}" stroke-width="0.4"/>`,
+      `<text x="${n(c.x)}" y="${n(top + 2.6)}" font-size="2.8" font-weight="bold" text-anchor="middle" dominant-baseline="central">${esc(label)}</text>`,
+      ...lines.map(
+        (l, i) =>
+          `<text x="${n(c.x)}" y="${n(top + 5.2 + i * 2.7 + 1.2)}" font-size="2" fill="#333" text-anchor="middle" dominant-baseline="central">${esc(l)}</text>`,
+      ),
     );
   }
   out.push(`</g>`);
@@ -544,7 +562,7 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
 
   // Cabecera de la tabla. Las medidas van debajo del nombre: en una columna
   // aparte, en A4 los nombres se quedaban en «Mesa plega…».
-  const col = { mark: x + 6.5, name: x + 11, qty: x + w - 4 };
+  const col = { mark: x + 6.5, name: d.options.marks ? x + 11 : x + 4, qty: x + w - 4 };
   cy += 3.5;
   out.push(
     `<text x="${col.name}" y="${cy}" font-size="1.9" fill="#555">ELEMENTO · L × A × H (m)</text>`,
@@ -558,7 +576,7 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
   const extra =
     (kinds.length ? 6 + kinds.length * 4.2 : 0) +
     (d.contact.length || d.roofEdges.length ? 14 : 0) +
-    (d.zones.length ? 7 + d.zones.length * 4.2 : 0) +
+    (d.zones.length ? 7 + d.zones.reduce((t, z) => t + (z.zone.description ? 7 : 4.2), 0) : 0) +
     (d.feeds.length ? 7 + d.feeds.length * 4.6 : 0);
   const rowH = 6.4;
   const maxRows = Math.max(0, Math.floor((legendBottom - cy - extra) / rowH));
@@ -568,9 +586,13 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
   const nameChars = Math.floor((col.qty - 6 - col.name) / 1.15);
   for (const r of rows) {
     cy += rowH;
+    if (d.options.marks) {
+      out.push(
+        `<circle cx="${col.mark}" cy="${cy - 1.9}" r="1.7" fill="#fff" stroke="#000" stroke-width="0.15"/>`,
+        `<text x="${col.mark}" y="${cy - 1.9}" font-size="1.7" text-anchor="middle" dominant-baseline="central">${r.mark}</text>`,
+      );
+    }
     out.push(
-      `<circle cx="${col.mark}" cy="${cy - 1.9}" r="1.7" fill="#fff" stroke="#000" stroke-width="0.15"/>`,
-      `<text x="${col.mark}" y="${cy - 1.9}" font-size="1.7" text-anchor="middle" dominant-baseline="central">${r.mark}</text>`,
       `<text x="${col.name}" y="${cy - 2.4}" font-size="2.1">${esc(fit(r.name, Math.max(8, nameChars)))}</text>`,
       `<text x="${col.name}" y="${cy}" font-size="1.75" fill="#555">${r.dims}</text>`,
       `<text x="${col.qty}" y="${cy - 1.2}" font-size="2.1" text-anchor="end">${r.count}</text>`,
@@ -593,6 +615,12 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
         `<text x="${x + 14}" y="${cy}" font-size="2.1">${esc(fit(`${z.zone.number} - ${z.zone.name || 'Zona'}`, Math.max(10, nameChars - 6)))}</text>`,
         `<text x="${x + w - 4}" y="${cy}" font-size="1.9" fill="#555" text-anchor="end">${fmtNum(z.area, 1)} m²</text>`,
       );
+      if (z.zone.description) {
+        cy += 2.8;
+        out.push(
+          `<text x="${x + 14}" y="${cy}" font-size="1.75" fill="#555">${esc(fit(z.zone.description, Math.max(10, nameChars + 2)))}</text>`,
+        );
+      }
     }
   }
 
@@ -636,16 +664,25 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
     );
   }
 
-  // --- Cajetín ---------------------------------------------------------------
+  out.push(...titleBlock(d, sh, 1, 1 + materialPages(d).length, 'PLANO'));
+  return out;
+}
+
+/** Cajetín, abajo de la columna lateral. Es el mismo en todas las hojas. */
+function titleBlock(d: Drawing, sh: Sheet, page: number, pages: number, kind: string): string[] {
+  const { x, y, w, h } = sh.side;
+  const out: string[] = [];
+  const blockH = 62;
+  const fit = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
   const by = y + h - blockH;
   const ev = d.input.event;
   const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const fields: [string, string][] = [
     ['EVENTO', ev?.name ?? '—'],
-    ['PLANO', d.input.plan.name],
+    [kind, kind === 'PLANO' ? d.input.plan.name : `Material · ${d.input.plan.name}`],
     ['LUGAR', ev?.location || '—'],
     ['FECHA', fecha],
-    ['ESCALA', `1:${sh.denom}`],
+    ['ESCALA', kind === 'PLANO' ? `1:${sh.denom}` : '—'],
     ['FORMATO', `${d.options.paper} · medidas en m`],
     ['AUTOR', d.input.author || '—'],
   ];
@@ -662,10 +699,183 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
   out.push(
     `<path d="M${x + 15} ${by}V${by + blockH - 10}" stroke="#000" stroke-width="0.12"/>`,
     `<text x="${x + 2.5}" y="${y + h - 4}" font-size="2.6" font-weight="bold" letter-spacing="0.2">EventForge</text>`,
-    `<text x="${x + w - 2.5}" y="${y + h - 4}" font-size="1.8" fill="#555" text-anchor="end">Hoja 1/1</text>`,
+    `<text x="${x + w - 2.5}" y="${y + h - 4}" font-size="1.8" fill="#555" text-anchor="end">Hoja ${page}/${pages}</text>`,
   );
   return out;
 }
+
+/** Corta un texto en líneas de como mucho `max` caracteres, sin partir palabras. */
+function wrap(text: string, max: number, maxLines: number): string[] {
+  if (!text) return [];
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    if ((line ? `${line} ${word}` : word).length <= max) {
+      line = line ? `${line} ${word}` : word;
+    } else {
+      if (line) lines.push(line);
+      line = word.length > max ? `${word.slice(0, max - 1)}…` : word;
+    }
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = `${kept[maxLines - 1].slice(0, max - 1)}…`;
+    return kept;
+  }
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Hojas de material
+// ---------------------------------------------------------------------------
+
+type MaterialEntry = { group: string; cont?: boolean } | { need: MaterialNeed };
+
+/**
+ * El listado de material del evento, en las hojas que hagan falta, con el
+ * mismo formato y cajetín que el plano. Agrupado por categoría y con el
+ * cableado al final, una línea por tipo y sin cantidades. Si se pide, lo que
+ * no hay en el almacén va resaltado con lo que falta.
+ */
+export function materialPages(d: Drawing): string[] {
+  const needs = d.options.material ? (d.input.material ?? []) : [];
+  if (needs.length === 0) return [];
+  const sh = layoutSheet(d);
+  const { x, y, w, h } = sh.area;
+  const names = d.input.categoryNames ?? new Map<string, string>();
+  const groupOf = (m: MaterialNeed) =>
+    m.cabling ? 'Cableado' : (m.categoryId ? names.get(m.categoryId) : undefined) ?? 'Otros';
+
+  const groups = new Map<string, MaterialNeed[]>();
+  for (const m of needs) groups.set(groupOf(m), [...(groups.get(groupOf(m)) ?? []), m]);
+  const ordered = [...groups.entries()].sort(
+    (a, b) => Number(a[0] === 'Cableado') - Number(b[0] === 'Cableado') || a[0].localeCompare(b[0], 'es'),
+  );
+  const entries: MaterialEntry[] = [];
+  for (const [group, list] of ordered) {
+    entries.push({ group });
+    for (const need of list.sort((a, b) => a.name.localeCompare(b.name, 'es'))) entries.push({ need });
+  }
+
+  const rowH = 5.4;
+  const top = y + 26;
+  const perPage = Math.max(5, Math.floor((y + h - 8 - top) / rowH));
+  const pagesEntries: MaterialEntry[][] = [];
+  let current: MaterialEntry[] = [];
+  let lastGroup = '';
+  for (const e of entries) {
+    if ('group' in e) lastGroup = e.group;
+    if (current.length >= perPage) {
+      pagesEntries.push(current);
+      current = 'group' in e ? [] : [{ group: lastGroup, cont: true }];
+    }
+    current.push(e);
+  }
+  if (current.length) pagesEntries.push(current);
+
+  const plan = 1;
+  const total = plan + pagesEntries.length;
+  const mark = d.options.markMissing;
+  const col = mark
+    ? { name: x + 6, need: x + w * 0.66, stock: x + w * 0.81, miss: x + w - 6 }
+    : { name: x + 6, need: x + w - 6, stock: 0, miss: 0 };
+  const qty = (v: number, unit: string) => `${fmtNum(v, unit === 'm' ? 1 : 0)} ${unit}`;
+  const nameChars = Math.floor(((mark ? col.need - 28 : col.need - 30) - col.name) / 1.25);
+  const short = needs.filter((m) => !m.cabling && m.missing > 0);
+
+  return pagesEntries.map((pageEntries, p) => {
+    const out: string[] = [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sh.w}mm" height="${sh.h}mm" viewBox="0 0 ${sh.w} ${sh.h}" font-family="${FONT}">`,
+      `<rect width="${sh.w}" height="${sh.h}" fill="#fff"/>`,
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#000" stroke-width="0.35"/>`,
+      `<text x="${x + 6}" y="${y + 10}" font-size="4.2" font-weight="bold" letter-spacing="0.3">LISTADO DE MATERIAL</text>`,
+      `<text x="${x + 6}" y="${y + 15.5}" font-size="2.4" fill="#555">${esc(d.input.event?.name ?? '')}${d.input.event?.name ? ' · ' : ''}${esc(d.input.plan.name)}${pagesEntries.length > 1 ? ` · ${p + 1} de ${pagesEntries.length}` : ''}</text>`,
+    ];
+
+    // Cabecera de columnas
+    const hy = top - 2.2;
+    out.push(
+      `<text x="${col.name}" y="${hy}" font-size="2" fill="#555">MATERIAL</text>`,
+      `<text x="${col.need}" y="${hy}" font-size="2" fill="#555" text-anchor="end">NECESARIO</text>`,
+    );
+    if (mark) {
+      out.push(
+        `<text x="${col.stock}" y="${hy}" font-size="2" fill="#555" text-anchor="end">EN ALMACÉN</text>`,
+        `<text x="${col.miss}" y="${hy}" font-size="2" fill="#555" text-anchor="end">FALTA</text>`,
+      );
+    }
+    out.push(`<path d="M${x + 4} ${top - 0.8}H${x + w - 4}" stroke="#000" stroke-width="0.2"/>`);
+
+    let cy = top;
+    for (const e of pageEntries) {
+      if ('group' in e) {
+        out.push(
+          `<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#f1f1f1"/>`,
+          `<text x="${col.name}" y="${n(cy + rowH * 0.68)}" font-size="2.3" font-weight="bold">${esc(e.group.toUpperCase())}${e.cont ? ' (cont.)' : ''}</text>`,
+        );
+      } else {
+        const m = e.need;
+        const missing = mark && !m.cabling && m.missing > 0;
+        if (missing) {
+          out.push(`<rect x="${x + 4}" y="${n(cy)}" width="${w - 8}" height="${rowH}" fill="#fdecec"/>`);
+        }
+        const base = n(cy + rowH * 0.68);
+        out.push(
+          `<text x="${col.name}" y="${base}" font-size="2.3"${missing ? ' font-weight="bold"' : ''}>${esc(m.name.length > nameChars ? `${m.name.slice(0, nameChars - 1)}…` : m.name)}</text>`,
+          `<text x="${col.need}" y="${base}" font-size="2.3" text-anchor="end">${m.cabling ? '—' : qty(m.needed, m.unit)}</text>`,
+        );
+        if (mark) {
+          out.push(
+            `<text x="${col.stock}" y="${base}" font-size="2.3" fill="#555" text-anchor="end">${m.cabling ? '' : qty(m.available, m.unit)}</text>`,
+            `<text x="${col.miss}" y="${base}" font-size="2.3" text-anchor="end"${missing ? ' font-weight="bold" fill="#b91c1c"' : ' fill="#999"'}>${m.cabling ? '' : missing ? qty(m.missing, m.unit) : '—'}</text>`,
+          );
+        }
+        out.push(`<path d="M${x + 4} ${n(cy + rowH)}H${x + w - 4}" stroke="#ddd" stroke-width="0.1"/>`);
+      }
+      cy += rowH;
+    }
+
+    // Columna lateral: resumen y cajetín
+    const sd = sh.side;
+    out.push(
+      `<rect x="${sd.x}" y="${sd.y}" width="${sd.w}" height="${sd.h}" fill="none" stroke="#000" stroke-width="0.35"/>`,
+      `<text x="${sd.x + 4}" y="${sd.y + 7}" font-size="3" font-weight="bold" letter-spacing="0.3">RESUMEN</text>`,
+    );
+    const lines: [string, string, boolean?][] = [
+      ['Referencias', String(needs.filter((m) => !m.cabling).length)],
+      ['Cableado', needs.filter((m) => m.cabling).map((m) => m.name.replace(/^Cableado (de )?/, '').split(' (')[0]).join(', ') || '—'],
+    ];
+    if (mark) {
+      lines.push(['Con falta en almacén', String(short.length), short.length > 0]);
+    }
+    let sy = sd.y + 14;
+    for (const [k, v, alert] of lines) {
+      out.push(
+        `<text x="${sd.x + 4}" y="${sy}" font-size="2" fill="#555">${esc(k)}</text>`,
+        `<text x="${sd.x + 4}" y="${sy + 3.4}" font-size="2.6" font-weight="bold"${alert ? ' fill="#b91c1c"' : ''}>${esc(v)}</text>`,
+      );
+      sy += 9;
+    }
+    if (mark && short.length) {
+      out.push(
+        `<rect x="${sd.x + 4}" y="${sy - 1}" width="6" height="3" fill="#fdecec"/>`,
+        `<text x="${sd.x + 12}" y="${sy + 1.4}" font-size="1.9" fill="#555">No hay suficiente en el almacén</text>`,
+      );
+    }
+    out.push(...titleBlock(d, sh, plan + p + 1, total, 'LISTADO'));
+    out.push(`</svg>`);
+    return out.join('\n');
+  });
+}
+
+/** Todas las hojas: el plano y, detrás, las del material. */
+export function toSvgPages(d: Drawing): string[] {
+  return [toSvg(d), ...materialPages(d)];
+}
+
 
 // ---------------------------------------------------------------------------
 // DXF (metros reales, por capas) — R12, que abre cualquier programa de CAD
@@ -773,6 +983,9 @@ export function toDxf(d: Drawing): string {
   for (const z of d.zones) {
     poly('ZONAS', z.points, true);
     text('ZONAS', z.centre, 2.8 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'}`);
+    wrap((z.zone.description ?? '').trim(), 42, 3).forEach((line, i) =>
+      text('ZONAS', { x: z.centre.x, y: z.centre.y + (3.6 + i * 2.7) * mm }, 2 * mm, line),
+    );
   }
   for (const fd of d.feeds) {
     const c = { x: Number(fd.object.x), y: Number(fd.object.y) };
@@ -801,7 +1014,7 @@ export function toDxf(d: Drawing): string {
     }
     if (FEED.has(o.kind)) {
       if (!d.options.feeds) text('MARCAS', c, 2 * mm, o.kind === 'power_source' ? 'E' : 'R');
-    } else if (it.mark != null) {
+    } else if (it.mark != null && d.options.marks) {
       g(0, 'CIRCLE'); g(8, 'MARCAS'); g(10, X(c.x)); g(20, Y(c.y)); g(30, 0); g(40, (2 * mm).toFixed(3));
       text('MARCAS', c, 2 * mm, String(it.mark));
     }

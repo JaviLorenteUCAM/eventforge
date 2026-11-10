@@ -7,7 +7,7 @@ import type {
   WarehouseItem,
   WarehouseItemVariant,
 } from './types';
-import { CONNECTION_DEFAULT_CABLE } from './types';
+import { CABLING_LABEL, type ConnectionKind } from './types';
 import { normalize, round } from './utils';
 
 /**
@@ -117,6 +117,10 @@ export function computeMaterialNeeds(
 
   // --- Objetos del plano ---------------------------------------------------
   for (const o of objects) {
+    // Los puntos de luz y de red son la acometida de la sala, no material que
+    // haya que llevar; y un texto del plano es un rótulo, no un objeto.
+    if (o.kind === 'power_source' || o.kind === 'network_source' || o.shape === 'text') continue;
+
     const item = o.warehouse_item_id ? itemById.get(o.warehouse_item_id) : undefined;
     const cat = o.catalog_id ? catalogById.get(o.catalog_id) : undefined;
     const variant = o.variant_id ? variantById.get(o.variant_id) : undefined;
@@ -163,23 +167,33 @@ export function computeMaterialNeeds(
     }
   }
 
-  // --- Cables (metros lineales) -------------------------------------------
-  // Los tres cableados —corriente, red y señal— suman sus metros igual: cada
-  // tipo de cable es una línea propia del listado.
-  for (const c of connections) {
-    const label = c.cable_type?.trim() || CONNECTION_DEFAULT_CABLE[c.kind] || 'Cable';
-    const key = `cable:${c.kind}:${normalize(label)}`;
-    add(
+  // --- Cableado -----------------------------------------------------------
+  // Una línea por tipo, sin metros ni cantidades: «Cableado eléctrico»,
+  // «Cableado de red»… Basta con saber qué cableado hay que llevar.
+  const kinds = new Set<ConnectionKind>(connections.map((c) => c.kind));
+  for (const kind of (['power', 'network', 'signal', 'usb'] as const).filter((k) => kinds.has(k))) {
+    const key = `cabling:${kind}`;
+    needs.set(key, {
       key,
-      { key, name: label, catalogId: null, categoryId: null, unit: 'm', warehouseItemId: null },
-      Number(c.length_m) || 0,
-      0,
-    );
+      name: CABLING_LABEL[kind],
+      catalogId: null,
+      categoryId: null,
+      unit: 'ud',
+      warehouseItemId: null,
+      cabling: kind,
+      needed: 0,
+      available: 0,
+      missing: 0,
+      totalWeightKg: 0,
+      totalVolumeM3: 0,
+    });
   }
 
   // --- Cruce con el almacén ------------------------------------------------
   return [...needs.values()]
     .map((need) => {
+      // El cableado no se cuenta: ni existencias ni faltas.
+      if (need.cabling) return need;
       let available = 0;
 
       if (need.variantId) {
@@ -189,7 +203,7 @@ export function computeMaterialNeeds(
       } else if (need.warehouseItemId) {
         available = Number(itemById.get(need.warehouseItemId)?.quantity ?? 0);
       } else {
-        // Los cables y los objetos sueltos se intentan casar por nombre.
+        // Los objetos sueltos se intentan casar por nombre.
         const matches = byName.get(normalize(need.name));
         if (matches) available = matches.reduce((s, i) => s + Number(i.quantity), 0);
       }
@@ -200,7 +214,13 @@ export function computeMaterialNeeds(
         missing: round(Math.max(0, need.needed - available), 2),
       };
     })
-    .sort((a, b) => b.missing - a.missing || a.name.localeCompare(b.name, 'es'));
+    // El cableado, al final.
+    .sort(
+      (a, b) =>
+        Number(Boolean(a.cabling)) - Number(Boolean(b.cabling)) ||
+        b.missing - a.missing ||
+        a.name.localeCompare(b.name, 'es'),
+    );
 }
 
 export interface MaterialSummary {
@@ -213,7 +233,8 @@ export interface MaterialSummary {
   totalVolumeM3: number;
 }
 
-export function summarizeMaterial(needs: MaterialNeed[]): MaterialSummary {
+export function summarizeMaterial(all: MaterialNeed[]): MaterialSummary {
+  const needs = all.filter((n) => !n.cabling);
   const totalNeeded = needs.reduce((s, n) => s + n.needed, 0);
   const totalMissing = needs.reduce((s, n) => s + n.missing, 0);
   return {
@@ -232,13 +253,17 @@ export function summarizeMaterial(needs: MaterialNeed[]): MaterialSummary {
 /** Exporta el listado a CSV (separador ';' para Excel en español). */
 export function materialToCsv(needs: MaterialNeed[], categoryName: (id: string | null) => string) {
   const header = ['Categoría', 'Material', 'Necesario', 'Unidad', 'En almacén', 'Faltan'];
-  const rows = needs.map((n) => [
-    categoryName(n.categoryId),
-    n.name,
-    String(n.needed).replace('.', ','),
-    n.unit,
-    String(n.available).replace('.', ','),
-    String(n.missing).replace('.', ','),
-  ]);
+  const rows = needs.map((n) =>
+    n.cabling
+      ? ['Cableado', n.name, '', '', '', '']
+      : [
+          categoryName(n.categoryId),
+          n.name,
+          String(n.needed).replace('.', ','),
+          n.unit,
+          String(n.available).replace('.', ','),
+          String(n.missing).replace('.', ','),
+        ],
+  );
   return [header, ...rows].map((r) => r.map((c) => `"${c}"`).join(';')).join('\r\n');
 }

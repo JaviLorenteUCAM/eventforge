@@ -49,6 +49,7 @@ import { useCreateZone, useDeleteZone, usePlanZones, useUpdateZone } from '@/dat
 import { useRealtime } from '@/data/realtime';
 import { qk } from '@/data/keys';
 import { analyzePlan, powerBudget } from '@/lib/issues';
+import { computeMaterialNeeds } from '@/lib/materials';
 import { BUCKETS, resolveUrl, uploadBlob } from '@/lib/storage';
 import { CONNECTION_COLOR, CONNECTION_DEFAULT_CABLE, CONNECTION_LABEL } from '@/lib/types';
 import type {
@@ -315,6 +316,23 @@ export function PlanPage() {
   const zoneList = useMemo(() => zonesQuery.data ?? [], [zonesQuery.data]);
   const selectedZone = zoneList.find((z) => z.id === selectedZoneId) ?? null;
   const createZone = useCreateZone();
+
+  // Listado de material del plano, para la hoja de material del PDF.
+  const materialNeeds = useMemo(
+    () =>
+      computeMaterialNeeds(
+        objects.data ?? [],
+        connections.data ?? [],
+        catalog.data ?? [],
+        items.data ?? [],
+        variants.data ?? [],
+      ),
+    [objects.data, connections.data, catalog.data, items.data, variants.data],
+  );
+  const categoryNames = useMemo(
+    () => new Map((categories.data ?? []).map((c) => [c.id, c.name])),
+    [categories.data],
+  );
   const updateZone = useUpdateZone();
   const deleteZone = useDeleteZone();
 
@@ -335,6 +353,7 @@ export function PlanPage() {
           name: `Zona ${number}`,
           color: palette[(number - 1) % palette.length],
           points,
+          description: '',
         },
         {
           onSuccess: (z) => {
@@ -1187,7 +1206,7 @@ export function PlanPage() {
             },
             {
               value: 'zone',
-              title: 'Zona: marca un área con cuatro pines',
+              title: 'Zona: marca un área con sus pines',
               label: <span className="hidden sm:inline">Zona</span>,
               icon: <VectorSquare className="size-3.5" />,
             },
@@ -1372,8 +1391,11 @@ export function PlanPage() {
       ) : tool === 'zone' ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
           <VectorSquare className="size-3.5 shrink-0 text-accent-soft" />
-          <span className="text-ink">Haz clic en cuatro puntos para marcar la zona.</span>
-          <span className="text-dim">Mayús invierte el ajuste a la rejilla · Esc cancela.</span>
+          <span className="text-ink">Un clic por pin, tantos como quieras.</span>
+          <span className="text-dim">
+            Para cerrarla: pulsa el primer pin, doble clic o Intro · Retroceso quita el último · Mayús
+            invierte el ajuste a la rejilla · Esc cancela.
+          </span>
         </div>
       ) : tool === 'measure' ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
@@ -1845,6 +1867,8 @@ export function PlanPage() {
         backgroundUrls={backgroundUrls}
         backgroundModelUrls={backgroundModelUrls}
         zones={zoneList}
+        material={materialNeeds}
+        categoryNames={categoryNames}
         author={profile?.name ?? ''}
       />
 

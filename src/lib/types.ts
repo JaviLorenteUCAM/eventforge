@@ -128,6 +128,19 @@ export const CONNECTION_COLOR: Record<ConnectionKind, string> = {
 };
 
 /** Cable que se propone por defecto al tirar uno de cada tipo. */
+/**
+ * Cómo se lista el cableado en el material: una línea por tipo, sin metros ni
+ * cantidades. Lo que importa al preparar el evento es saber que hay que
+ * llevar cableado eléctrico, de red, de señal o USB; los metros exactos del
+ * plano no se corresponden con las mangueras que hay en el almacén.
+ */
+export const CABLING_LABEL: Record<ConnectionKind, string> = {
+  power: 'Cableado eléctrico',
+  network: 'Cableado de red',
+  signal: 'Cableado de señal (HDMI, DisplayPort, USB-C)',
+  usb: 'Cableado USB',
+};
+
 export const CONNECTION_DEFAULT_CABLE: Record<ConnectionKind, string> = {
   power: 'Manguera 3G1.5',
   network: 'Cat6 U/UTP',
@@ -560,6 +573,11 @@ export interface MaterialNeed {
   warehouseItemId: string | null;
   /** Si la línea sale de un estilo (un mantel, una funda), cuál. */
   variantId?: string | null;
+  /**
+   * Si la línea es de cableado, de qué tipo. Esas líneas no llevan cantidades:
+   * solo dicen que hace falta ese cableado.
+   */
+  cabling?: ConnectionKind;
   totalWeightKg: number;
   totalVolumeM3: number;
 }
@@ -632,8 +650,10 @@ export interface PlanZone {
   number: number;
   name: string;
   color: string;
-  /** Vértices en metros del plano: cuatro al crearla. */
+  /** Vértices en metros del plano: tres o más. */
   points: Waypoint[];
+  /** Descripción opcional: sale bajo el rótulo en el plano exportado. */
+  description: string;
   created_at: string;
   updated_at: string;
 }

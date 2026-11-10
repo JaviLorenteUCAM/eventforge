@@ -94,6 +94,7 @@ const FILES = [
   '0017_background_models.sql',
   '0018_background_model_adjust.sql',
   '0019_plan_zones.sql',
+  '0020_zone_description.sql',
 ];
 let allOk = true;
 
@@ -287,9 +288,10 @@ await db.exec(`
      model_offset_x, model_offset_y, model_rotation, model_scale)
   values ('${planId}', 'demo/patio.jpg', 'Foto aérea', 0.55, 0, 0, 18, 12, 'recintos/pergolas.glb',
           2.5, -1.25, 12.5, 1.05);
-  insert into public.plan_zones (plan_id, number, name, color, points)
+  insert into public.plan_zones (plan_id, number, name, color, points, description)
   values ('${planId}', 1, 'Zona Fripozo', '#f59e0b',
-          '[{"x":1,"y":1},{"x":6,"y":1},{"x":6,"y":4},{"x":1,"y":4}]');
+          '[{"x":1,"y":1},{"x":6,"y":1},{"x":6,"y":4},{"x":3.5,"y":5.5},{"x":1,"y":4}]',
+          'Degustación');
 `);
 
 const scen = await db.query(
@@ -368,16 +370,16 @@ console.log(
   const zonas = await db.query(`
     select
       (select count(*)::int from public.scenario_zones where scenario_id='${scenarioId}') as escenario,
-      (select string_agg(number || ' - ' || name, ',') from public.plan_zones where plan_id='${plan2Id}') as cargada,
-      (select string_agg(z.number || ' - ' || z.name || ' ' || jsonb_array_length(z.points), ',')
+      (select string_agg(number || ' - ' || name || ' · ' || description, ',') from public.plan_zones where plan_id='${plan2Id}') as cargada,
+      (select string_agg(z.number || ' - ' || z.name || ' · ' || z.description || ' ' || jsonb_array_length(z.points), ',')
          from public.plan_zones z join public.plans p on p.id = z.plan_id
         where p.event_id = '${dup.rows[0].id}') as copia`);
   const z = zonas.rows[0];
-  const zok = z.escenario === 1 && z.cargada === '1 - Zona Fripozo' && z.copia === '1 - Zona Fripozo 4';
+  const zok = z.escenario === 1 && z.cargada === '1 - Zona Fripozo · Degustación' && z.copia === '1 - Zona Fripozo · Degustación 5';
   if (!zok) allOk = false;
   console.log(
     zok
-      ? '  \x1b[32m✓\x1b[0m Las zonas viajan con el plano (escenario, carga y duplicado)'
+      ? '  \x1b[32m✓\x1b[0m Las zonas, con su descripción y sus cinco pines, viajan con el plano (escenario, carga y duplicado)'
       : `  \x1b[31m✗\x1b[0m Las zonas se pierden: ${JSON.stringify(z)}`,
   );
 }
