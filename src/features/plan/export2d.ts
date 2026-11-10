@@ -482,10 +482,10 @@ export function toSvg(d: Drawing): string {
   for (const z of d.zones) {
     if (zoneStyle === 'color') continue;
     if (zoneStyle === 'number') {
-      const b = P(zoneCorner(z.points, z.centre, 4.5 / sh.k));
+      const b = P(zoneCorner(z.points, z.centre, 6.5 / sh.k));
       out.push(
-        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="2.6" fill="#fff" stroke="${z.zone.color}" stroke-width="0.5"/>`,
-        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="2.9" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
+        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="4" fill="#fff" stroke="${z.zone.color}" stroke-width="0.7"/>`,
+        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="4.6" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
       );
       continue;
     }
@@ -1234,9 +1234,9 @@ export function toDxf(d: Drawing): string {
     poly('ZONAS', z.points, true);
     if (zoneStyle === 'color') continue;
     if (zoneStyle === 'number') {
-      const b = zoneCorner(z.points, z.centre, 4.5 * mm);
-      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (2.6 * mm).toFixed(3));
-      text('ZONAS', b, 2.9 * mm, String(z.zone.number));
+      const b = zoneCorner(z.points, z.centre, 6.5 * mm);
+      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (4 * mm).toFixed(3));
+      text('ZONAS', b, 4.6 * mm, String(z.zone.number));
       continue;
     }
     text('ZONAS', z.centre, 2.8 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'}`);
