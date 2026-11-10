@@ -482,10 +482,10 @@ export function toSvg(d: Drawing): string {
   for (const z of d.zones) {
     if (zoneStyle === 'color') continue;
     if (zoneStyle === 'number') {
-      const b = P(zoneCorner(z.points, z.centre, 6.5 / sh.k));
+      const b = P(zoneCorner(z.points, z.centre, 9.5 / sh.k));
       out.push(
-        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="4" fill="#fff" stroke="${z.zone.color}" stroke-width="0.7"/>`,
-        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="4.6" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
+        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="8" fill="#fff" stroke="${z.zone.color}" stroke-width="1"/>`,
+        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="9.2" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
       );
       continue;
     }
@@ -595,19 +595,39 @@ function feedSymbol(kind: string, cx: number, cy: number, r: number): string {
 }
 
 /**
- * Dónde va el número de una zona: junto a su esquina de arriba a la
- * izquierda, metido hacia dentro (hacia el centro) la distancia dada, para
- * que quede dentro de la zona y no encima del borde.
+ * Dónde va el número de una zona: en su esquina de arriba a la izquierda,
+ * metido hacia dentro por la bisectriz del ángulo lo justo para quedar a la
+ * distancia dada (el radio del círculo y un margen) de los dos lados de esa
+ * esquina, así no pisa el borde. En una zona muy pequeña no pasa de la mitad
+ * del camino hacia el centro.
  */
-function zoneCorner(points: Pt[], centre: Pt, inset: number): Pt {
+function zoneCorner(points: Pt[], centre: Pt, clearance: number): Pt {
   if (points.length === 0) return centre;
-  const v = points.reduce((best, p) => (p.x + p.y < best.x + best.y ? p : best), points[0]);
-  const dx = centre.x - v.x;
-  const dy = centre.y - v.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 1e-6) return v;
-  const t = Math.min(inset, len * 0.45);
-  return { x: v.x + (dx / len) * t, y: v.y + (dy / len) * t };
+  const i = points.reduce((b, p, j) => (p.x + p.y < points[b].x + points[b].y ? j : b), 0);
+  const v = points[i];
+  const unit = (p: Pt) => {
+    const l = Math.hypot(p.x - v.x, p.y - v.y);
+    return l < 1e-9 ? null : { x: (p.x - v.x) / l, y: (p.y - v.y) / l };
+  };
+  const toCentre = Math.hypot(centre.x - v.x, centre.y - v.y);
+  if (toCentre < 1e-6) return v;
+  const e1 = unit(points[(i + points.length - 1) % points.length]);
+  const e2 = unit(points[(i + 1) % points.length]);
+  let dir = { x: (centre.x - v.x) / toCentre, y: (centre.y - v.y) / toCentre };
+  let dist = clearance * Math.SQRT2;
+  if (e1 && e2) {
+    const bx = e1.x + e2.x;
+    const by = e1.y + e2.y;
+    const bl = Math.hypot(bx, by);
+    if (bl > 1e-6) {
+      dir = { x: bx / bl, y: by / bl };
+      // Distancia a cada lado = d · sen(medio ángulo).
+      const sinHalf = Math.abs(e1.x * dir.y - e1.y * dir.x);
+      if (sinHalf > 0.05) dist = clearance / sinHalf;
+    }
+  }
+  const t = Math.min(dist, toCentre * 0.5);
+  return { x: v.x + dir.x * t, y: v.y + dir.y * t };
 }
 
 /** Leyenda y cajetín. */
@@ -1234,9 +1254,9 @@ export function toDxf(d: Drawing): string {
     poly('ZONAS', z.points, true);
     if (zoneStyle === 'color') continue;
     if (zoneStyle === 'number') {
-      const b = zoneCorner(z.points, z.centre, 6.5 * mm);
-      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (4 * mm).toFixed(3));
-      text('ZONAS', b, 4.6 * mm, String(z.zone.number));
+      const b = zoneCorner(z.points, z.centre, 9.5 * mm);
+      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (8 * mm).toFixed(3));
+      text('ZONAS', b, 9.2 * mm, String(z.zone.number));
       continue;
     }
     text('ZONAS', z.centre, 2.8 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'}`);

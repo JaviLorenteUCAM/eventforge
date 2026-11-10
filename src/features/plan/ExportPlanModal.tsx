@@ -77,15 +77,15 @@ export function ExportPlanModal({
   const [paper, setPaper] = useState<Paper>('A3');
   const [scale, setScale] = useState<number | null>(null);
   const [photo, setPhoto] = useState(false);
-  const [cables, setCables] = useState(true);
+  const [cables, setCables] = useState(false);
   const [venue, setVenue] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [zoneStyle, setZoneStyle] = useState<ZoneStyle>('label');
   const [feeds, setFeeds] = useState(true);
-  const [marks, setMarks] = useState(true);
+  const [marks, setMarks] = useState(false);
   const [withMaterial, setWithMaterial] = useState(true);
   const [markMissing, setMarkMissing] = useState(true);
-  const [byZone, setByZone] = useState(false);
+  const [byZone, setByZone] = useState(true);
 
   /**
    * Material de cada zona: los objetos cuyo centro cae dentro. Un objeto en
