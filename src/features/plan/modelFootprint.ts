@@ -25,6 +25,19 @@ export interface Footprint {
   roofs: string;
   /** Trazado de las cabezas de los pilares. */
   pillars: string;
+  /**
+   * Lo que TOCA EL SUELO, en triángulos (x, z, x, z, x, z): las caras de abajo
+   * que quedan a ras de suelo. En unas pérgolas, las bases de los pilares. No
+   * depende de cómo se llamen los materiales, así que vale para cualquier
+   * modelo. Es lo que el plano exportado dibuja en negro macizo.
+   */
+  contact: number[];
+  /**
+   * Contorno de las cubiertas, en segmentos (x1, z1, x2, z2): las aristas que
+   * solo tiene un triángulo, es decir, el borde exterior de cada faldón o
+   * techo, sin las líneas internas de la triangulación.
+   */
+  roofEdges: number[];
   minX: number;
   maxX: number;
   minZ: number;
@@ -34,12 +47,29 @@ export interface Footprint {
 }
 
 const PILLAR = /pilar|pillar|column|post|poste/i;
+/** Lo que está bajo la cubierta y no forma parte de su contorno. */
+const UNDER_ROOF = /viga|beam|pilar|pillar|column|post|poste/i;
+/** Hasta qué altura sobre lo más bajo del modelo se considera «suelo». */
+const GROUND = 0.05;
 const cache = new Map<string, Promise<Footprint>>();
 
 function compute(scene: THREE.Group): Footprint {
   scene.updateMatrixWorld(true);
   const roofs: string[] = [];
   const pillars: string[] = [];
+  const contact: number[] = [];
+  // Aristas de las cubiertas: cuántos triángulos comparten cada una.
+  const edges = new Map<string, { n: number; seg: number[] }>();
+  const key = (v: THREE.Vector3) => `${Math.round(v.x * 1000)},${Math.round(v.y * 1000)},${Math.round(v.z * 1000)}`;
+  const addEdge = (p: THREE.Vector3, q: THREE.Vector3) => {
+    const kp = key(p);
+    const kq = key(q);
+    const k = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
+    const e = edges.get(k);
+    if (e) e.n++;
+    else edges.set(k, { n: 1, seg: [p.x, p.z, q.x, q.z] });
+  };
+  const bottom = new THREE.Box3().setFromObject(scene).min.y;
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -57,6 +87,7 @@ function compute(scene: THREE.Group): Footprint {
     if (!mesh.isMesh) return;
     const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     const isPillar = PILLAR.test(material?.name ?? '');
+    const underRoof = UNDER_ROOF.test(material?.name ?? '');
     const pos = mesh.geometry.getAttribute('position');
     const index = mesh.geometry.getIndex();
     const count = index ? index.count : pos.count;
@@ -84,14 +115,28 @@ function compute(scene: THREE.Group): Footprint {
       } else if (ny > 0.25) {
         roofs.push(tri);
       }
+      if (ny > 0.25 && !underRoof) {
+        addEdge(a, b);
+        addEdge(b, c);
+        addEdge(c, a);
+      }
+      // A ras de suelo y mirando hacia abajo: es lo que se apoya en el suelo.
+      if (ny < -0.5 && Math.max(a.y, b.y, c.y) < bottom + GROUND) {
+        contact.push(a.x, a.z, b.x, b.z, c.x, c.z);
+      }
     }
   });
 
   const extras = (scene.userData as { eventforge?: { imageWidthM?: number; imageHeightM?: number } })
     .eventforge;
+  const roofEdges: number[] = [];
+  for (const e of edges.values()) if (e.n === 1) roofEdges.push(...e.seg);
+
   return {
     roofs: roofs.join(''),
     pillars: pillars.join(''),
+    contact,
+    roofEdges,
     minX,
     maxX,
     minZ,

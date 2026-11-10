@@ -25,6 +25,7 @@ import {
   MonitorPlay,
   Usb,
   Landmark,
+  FileDown,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -42,6 +43,7 @@ import {
   useUpdatePlan,
 } from '@/data/plans';
 import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
+import { useEvent } from '@/data/events';
 import { useRealtime } from '@/data/realtime';
 import { qk } from '@/data/keys';
 import { analyzePlan, powerBudget } from '@/lib/issues';
@@ -69,6 +71,7 @@ import { cn, fmtNum, round, uid } from '@/lib/utils';
 import { Editor2D, type CalibrationLine, type CommitUpdate } from './Editor2D';
 import { isCableTool, toolKind } from './cables';
 import { Editor3D } from './Editor3D';
+import { ExportPlanModal } from './ExportPlanModal';
 import { Inspector } from './Inspector';
 import { ObjectLibrary, type AddPayload, type BasicShape, type DropPayload } from './ObjectLibrary';
 import { BackgroundPanel } from './BackgroundPanel';
@@ -144,6 +147,7 @@ export function PlanPage() {
   const { profile } = useAuth();
 
   const plans = usePlans(eventId);
+  const eventQuery = useEvent(eventId);
   const plan = plans.data?.[0];
   const objects = usePlanObjects(plan?.id);
   const connections = usePlanConnections(plan?.id);
@@ -201,6 +205,7 @@ export function PlanPage() {
   const [loadScenarioOpen, setLoadScenarioOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [capturesOpen, setCapturesOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
   // --- URLs firmadas de las imágenes de fondo y de las texturas -------------
@@ -1244,6 +1249,14 @@ export function PlanPage() {
               onClick={() => setCapturesOpen(true)}
               icon={<ImageIcon className="size-4" />}
             />
+            <Button
+              size="sm"
+              variant="outline"
+              icon={<FileDown className="size-3.5" />}
+              onClick={() => setExportOpen(true)}
+            >
+              Exportar plano
+            </Button>
           </div>
 
           {/* Móvil: el resto de opciones, en una hoja desplegable. */}
@@ -1617,6 +1630,16 @@ export function PlanPage() {
             </Button>
             <Button
               variant="ghost"
+              icon={<FileDown className="size-4" />}
+              onClick={() => {
+                setSheet('none');
+                setExportOpen(true);
+              }}
+            >
+              Exportar plano 2D (PDF, SVG, DXF)
+            </Button>
+            <Button
+              variant="ghost"
               icon={<Layers className="size-4" />}
               onClick={() => {
                 setSheet('none');
@@ -1681,6 +1704,19 @@ export function PlanPage() {
             deshacerlo con Ctrl+Z.
           </>
         }
+      />
+
+      <ExportPlanModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        plan={plan}
+        event={eventQuery.data ?? null}
+        objects={objectList}
+        connections={connectionList}
+        backgrounds={backgroundList}
+        backgroundUrls={backgroundUrls}
+        backgroundModelUrls={backgroundModelUrls}
+        author={profile?.name ?? ''}
       />
 
       <CapturesModal

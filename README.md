@@ -736,6 +736,27 @@ paso de deshacer: una sola vuelta atrás devuelve los objetos y sus cables.
 El **deshacer** está basado en comandos: cada acción sabe cómo revertirse escribiendo en la
 base de datos, de modo que al deshacer el resto del equipo también ve el resultado.
 
+### Exportar el plano en 2D
+
+**Exportar plano** (junto a *Captura*) saca un plano para montar, no una foto de la pantalla:
+una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor que quepa
+(1:50, 1:100, 1:200…) o la que se elija— con:
+
+- el recinto con sus **cotas** generales y **escala gráfica**;
+- los objetos dibujados en planta, cada uno con una **marca numerada**; los iguales (mismo
+  nombre y medidas) comparten número y la **leyenda** dice cuántos hay y sus medidas;
+- el **cableado** por tipos, con su leyenda;
+- del **modelo 3D del recinto**, todo lo que **toca el suelo** (los pilares de unas pérgolas) en
+  negro macizo y el contorno de las cubiertas en discontinua, que es como se dibuja en planta
+  lo que queda por encima. Lo que toca el suelo se saca de la geometría (las caras de abajo a ras
+  de suelo), así que vale para cualquier modelo;
+- la **foto de fondo** en gris, si se quiere;
+- el **cajetín**: evento, plano, lugar, fecha, escala, formato y autor.
+
+Formatos: **PDF** (por la impresión del navegador, vectorial y a escala exacta: «Guardar como
+PDF» al 100 %), **SVG** y **DXF** para AutoCAD y cualquier programa de CAD, en metros reales y
+por capas (RECINTO, COTAS, OBJETOS, MARCAS, TEXTOS, una por tipo de cable, PILARES y CUBIERTAS).
+
 ### Imagen de fondo y calibración a escala real
 
 Esta es la forma rápida de montar un escenario que existe de verdad:
@@ -782,6 +803,10 @@ imagen de fondo** a la que corresponde (en la capa, *Modelo 3D del recinto → S
   flechas, giro, − / + y campos exactos (*Fino*: 10 cm, 0,5° y 0,5 %; *Grueso*: 1 m, 5° y 5 %);
   la mira lo devuelve a su sitio. Giro y escala van **alrededor del centro del propio modelo**, y
   el ajuste viaja con la capa.
+- **Sin rayas al mover la cámara.** El recinto no proyecta ni recibe sombras (la foto ya trae
+  las suyas) y sus caras con foto van por delante de lo que tengan justo debajo; la foto de
+  fondo, por delante de la rejilla; y el plano cercano de la cámara crece con la distancia, de
+  modo que lejos hay precisión de profundidad de sobra sin perder los primeros planos.
 - **Escala igual en todos los ejes.** Si la capa es la misma captura para la que se hizo el
   modelo, se encaja con su calibración; si es otra imagen, va a su tamaño real en metros. Antes
   se estiraban el ancho y el alto por separado y, con una foto de otra proporción, los pabellones
