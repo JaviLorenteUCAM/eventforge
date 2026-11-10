@@ -177,6 +177,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 13 | `supabase/migrations/0013_usb_cabling.sql` | Cableado USB y categoría de periféricos |
 | 14 | `supabase/migrations/0014_volume_mode.sql` | Modo volumen: la forma sale de las vistas de la plantilla |
 | 15 | `supabase/migrations/0015_model_floor_offset.sql` | Altura del suelo del modelo (silueta y volumen) |
+| 16 | `supabase/migrations/0016_object_models.sql` | Modelos 3D (.glb) en el material y el catálogo, y su bucket |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -583,7 +584,8 @@ eventforge/
 │       ├── 0012_silhouette_mode.sql   # la imagen es la forma del objeto
 │       ├── 0013_usb_cabling.sql       # cableado USB, categoría periféricos
 │       ├── 0014_volume_mode.sql       # modo de textura «volumen»
-│       └── 0015_model_floor_offset.sql # altura del suelo del modelo
+│       ├── 0015_model_floor_offset.sql # altura del suelo del modelo
+│       └── 0016_object_models.sql     # modelos 3D (.glb) y bucket models
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -856,6 +858,33 @@ bajo que queda es la base. En los modos *Silueta* y *Volumen* la ficha tiene un 
 suelo del modelo**, en metros: en negativo baja el modelo, en positivo lo sube. Se guarda en la
 ficha (material, estilo u objeto de catálogo), así que se ajusta una vez y vale para todas las
 copias de todos los planos.
+
+#### Modelos 3D (.glb)
+
+Para lo que ninguna caja pintada ni forma tallada reproduce bien —una silla gaming con su base
+de cinco radios, sus ruedas y su marca— la ficha del material (y la del catálogo) admite un
+**modelo 3D** en formato glTF binario (`.glb`) con la textura incluida, hasta 30 MB, en el
+bucket privado `models`.
+
+- En el **3D** se dibuja en lugar de la caja, **escalado a las medidas de la ficha** eje por
+  eje: ocupa exactamente la huella que se ve en el 2D, y si cambias las medidas el modelo las
+  sigue. El frente del modelo es +Z, el mismo que el de la plantilla.
+- En el **2D** sigue siendo su rectángulo.
+- Se selecciona, arrastra, gira y resalta igual que la caja. Mientras carga, o si el fichero no
+  se puede leer, se ve la caja de siempre.
+- La **altura del suelo del modelo** también vale aquí, por si el modelo trae aire por debajo.
+- Cada `.glb` se descarga una vez; las copias del plano comparten geometría y texturas.
+
+**Generar un modelo a partir de una foto.** `tools/modelos/silla_phoenix.mjs` construye la silla
+Phoenix Monarch a escala real a partir de la foto del fabricante (cuatro vistas con el fondo
+transparente): mide cada pieza en la propia foto, curva el respaldo según la vista lateral y
+pinta las partes tapizadas proyectando sobre ellas la vista de frente, la de detrás y la lateral,
+así que la marca sale donde está. Las piezas mecánicas (base, ruedas, pistón, reposabrazos) son
+de plástico y metal. No necesita dependencias nuevas: usa three.js del proyecto y ffmpeg.
+
+```bash
+node tools/modelos/silla_phoenix.mjs foto.webp modelos/silla-phoenix-monarch.glb ruta/a/ffmpeg.exe
+```
 
 ### Orientación: girar un objeto en los tres ejes
 

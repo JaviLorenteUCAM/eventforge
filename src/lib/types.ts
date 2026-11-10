@@ -247,6 +247,8 @@ export interface CatalogObject {
   /** Puertos USB que ofrece: un ordenador, un hub. */
   usb_port_count: number;
   is_system: boolean;
+  /** Modelo 3D (.glb) en el bucket `models`. Si lo hay, el 3D lo dibuja en lugar de la caja. */
+  model_path: string | null;
   texture_path: string | null;
   texture_mode: TextureMode;
   texture_scale: number;
@@ -314,6 +316,8 @@ export interface WarehouseItem {
   signal_out_count: number;
   /** Puertos USB que ofrece: un ordenador, un hub. */
   usb_port_count: number;
+  /** Modelo 3D (.glb) en el bucket `models`. Si lo hay, el 3D lo dibuja en lugar de la caja. */
+  model_path: string | null;
   texture_path: string | null;
   texture_mode: TextureMode;
   texture_scale: number;

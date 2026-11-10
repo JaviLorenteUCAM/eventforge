@@ -13,6 +13,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { TextureSection, type TextureFields } from './TextureSection';
+import { ModelSection } from './ModelSection';
 import {
   useCategories,
   useCreateCatalogObject,
@@ -79,6 +80,7 @@ export function CatalogObjectModal({
     texture_floor_offset: 0,
   });
   const [texturePath, setTexturePath] = useState<string | null>(null);
+  const [modelPath, setModelPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export function CatalogObjectModal({
       texture_floor_offset: Number(object?.texture_floor_offset ?? 0),
     });
     setTexturePath(object?.texture_path ?? null);
+    setModelPath(object?.model_path ?? null);
     setError(null);
   }, [open, object]);
 
@@ -127,6 +130,7 @@ export function CatalogObjectModal({
       name: form.name.trim(),
       category_id: form.category_id || null,
       texture_path: texturePath,
+      model_path: modelPath,
     };
 
     try {
@@ -321,9 +325,20 @@ export function CatalogObjectModal({
             keyColor={form.texture_key_color}
             keyTolerance={form.texture_key_tolerance}
             floorOffset={form.texture_floor_offset}
+            hasModel={Boolean(modelPath)}
             folder="biblioteca"
             onPathChange={setTexturePath}
             onFieldChange={(patch: Partial<TextureFields>) => setForm((f) => ({ ...f, ...patch }))}
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <ModelSection
+            path={modelPath}
+            floorOffset={form.texture_floor_offset}
+            folder="biblioteca"
+            onPathChange={setModelPath}
+            onFloorOffsetChange={(v) => setForm((f) => ({ ...f, texture_floor_offset: v }))}
           />
         </div>
 

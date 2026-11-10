@@ -90,6 +90,7 @@ const FILES = [
   '0013_usb_cabling.sql',
   '0014_volume_mode.sql',
   '0015_model_floor_offset.sql',
+  '0016_object_models.sql',
 ];
 let allOk = true;
 
@@ -457,6 +458,17 @@ await mustFail(
   'Una altura del suelo del modelo desmesurada se rechaza',
   `update public.warehouse_items set texture_floor_offset=7 where id='${itemId}'`,
 );
+
+// Modelos 3D (0016): columna en material y catálogo, y su bucket.
+try {
+  await db.exec(`update public.warehouse_items set model_path='almacen/silla.glb' where id='${itemId}'`);
+  const b = await db.query(`select count(*)::int as n from storage.buckets where id='models'`);
+  if (b.rows[0].n !== 1) throw new Error('falta el bucket models');
+  console.log('  [32m✓[0m El material guarda su modelo 3D y existe el bucket de modelos');
+} catch (err) {
+  allOk = false;
+  console.log(`  [31m✗[0m Modelos 3D: ${err.message}`);
+}
 
 await mustFail(
   'Un modo de textura inválido se rechaza',

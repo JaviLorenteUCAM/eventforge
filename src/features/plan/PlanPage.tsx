@@ -205,6 +205,7 @@ export function PlanPage() {
   // --- URLs firmadas de las imágenes de fondo y de las texturas -------------
   const [backgroundUrls, setBackgroundUrls] = useState<Map<string, string>>(new Map());
   const [textureUrls, setTextureUrls] = useState<Map<string, string>>(new Map());
+  const [modelUrls, setModelUrls] = useState<Map<string, string>>(new Map());
 
   const backgroundList = useMemo(() => backgrounds.data ?? [], [backgrounds.data]);
 
@@ -250,6 +251,33 @@ export function PlanPage() {
       alive = false;
     };
   }, [catalog.data, items.data, variants.data]);
+
+  // Modelos 3D: misma idea que las texturas, en su propio bucket.
+  useEffect(() => {
+    const paths = [
+      ...new Set(
+        [...(catalog.data ?? []), ...(items.data ?? [])]
+          .map((c) => c.model_path)
+          .filter(Boolean as never),
+      ),
+    ] as string[];
+    if (paths.length === 0) {
+      setModelUrls(new Map());
+      return;
+    }
+    let alive = true;
+    void Promise.all(
+      paths.map(async (p) => [p, await resolveUrl(BUCKETS.models, p)] as const),
+    ).then((pairs) => {
+      if (!alive) return;
+      const map = new Map<string, string>();
+      for (const [p, url] of pairs) if (url) map.set(p, url);
+      setModelUrls(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [catalog.data, items.data]);
 
   useRealtime(
     `plan-${plan?.id}`,
@@ -361,6 +389,26 @@ export function PlanPage() {
     }
     return map;
   }, [objectList, catalog.data, items.data, variants.data, textureUrls]);
+
+  /**
+   * Modelo 3D de cada objeto: el de su ficha de origen (material o catálogo).
+   * La altura del suelo del modelo también es de la ficha, para que valga
+   * igual en todas las copias.
+   */
+  const models = useMemo(() => {
+    const byCatalog = new Map((catalog.data ?? []).map((c) => [c.id, c]));
+    const byItem = new Map((items.data ?? []).map((i) => [i.id, i]));
+    const map = new Map<string, { url: string; floorOffset: number }>();
+    for (const o of objectList) {
+      const base =
+        (o.warehouse_item_id ? byItem.get(o.warehouse_item_id) : undefined) ??
+        (o.catalog_id ? byCatalog.get(o.catalog_id) : undefined);
+      const url = base?.model_path ? modelUrls.get(base.model_path) : undefined;
+      if (!base || !url) continue;
+      map.set(o.id, { url, floorOffset: Number(base.texture_floor_offset ?? 0) });
+    }
+    return map;
+  }, [objectList, catalog.data, items.data, modelUrls]);
 
   // --- Imágenes de fondo ----------------------------------------------------
   const handleBackgroundUploaded = useCallback(
@@ -1266,6 +1314,7 @@ export function PlanPage() {
               backgrounds={backgroundList}
               backgroundUrls={backgroundUrls}
               textures={textures}
+              models={models}
               issuesByObject={issuesByObject}
               onCommit={(u, l) => void commit(u, l)}
               onGlReady={(gl, scene, camera) => {

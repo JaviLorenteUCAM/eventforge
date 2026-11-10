@@ -17,6 +17,7 @@ export const BUCKETS = {
   captures: 'captures',
   planBackgrounds: 'plan-backgrounds',
   textures: 'textures',
+  models: 'models',
 } as const;
 
 export type BucketName = (typeof BUCKETS)[keyof typeof BUCKETS];
@@ -29,6 +30,7 @@ const MAX_BYTES: Record<string, number> = {
   captures: 10 * 1024 * 1024,
   'plan-backgrounds': 15 * 1024 * 1024,
   textures: 10 * 1024 * 1024,
+  models: 30 * 1024 * 1024,
 };
 
 /**
@@ -38,6 +40,7 @@ const MAX_BYTES: Record<string, number> = {
 const SIGNED_TTL_BY_BUCKET: Record<string, number> = {
   'plan-backgrounds': 8 * 60 * 60,
   textures: 8 * 60 * 60,
+  models: 8 * 60 * 60,
 };
 
 export class StorageError extends Error {}
@@ -71,6 +74,32 @@ export async function uploadFile(bucket: BucketName, folder: string, file: File)
     .from(bucket)
     .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
 
+  if (error) throw new StorageError(error.message);
+  return path;
+}
+
+/**
+ * Sube un modelo 3D (.glb). Va aparte de uploadFile porque el navegador casi
+ * nunca sabe el tipo de un .glb (llega vacío o como octet-stream): se valida
+ * por la extensión y por la cabecera «glTF» del propio fichero.
+ */
+export async function uploadModel(folder: string, file: File): Promise<string> {
+  if (!/\.glb$/i.test(file.name)) {
+    throw new StorageError('El modelo debe ser un fichero .glb (glTF binario).');
+  }
+  const magic = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  if (String.fromCharCode(...magic) !== 'glTF') {
+    throw new StorageError('El fichero no es un .glb válido.');
+  }
+  const limit = MAX_BYTES.models;
+  if (file.size > limit) {
+    throw new StorageError(`El modelo supera los ${Math.round(limit / 1024 / 1024)} MB.`);
+  }
+
+  const path = `${folder.replace(/^\/|\/$/g, '')}/${randomName(file)}`;
+  const { error } = await supabase.storage
+    .from(BUCKETS.models)
+    .upload(path, file, { cacheControl: '3600', upsert: false, contentType: 'model/gltf-binary' });
   if (error) throw new StorageError(error.message);
   return path;
 }

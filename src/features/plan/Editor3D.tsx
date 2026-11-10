@@ -16,6 +16,7 @@ import { usePlanStore } from "./planStore";
 import type { CommitUpdate } from "./Editor2D";
 import { isFeed } from "./cables";
 import { GroundImage, TexturedMesh, type TextureSpec } from "./TexturedMesh";
+import { ModelMesh } from "./ModelMesh";
 
 /**
  * EDITOR 3D
@@ -39,6 +40,8 @@ interface Props {
   backgroundUrls: Map<string, string>;
   /** Textura de cada objeto del plano, indexada por su id. */
   textures: Map<string, TextureSpec>;
+  /** Modelo 3D (.glb) de cada objeto que lo tenga, indexado por su id. */
+  models: Map<string, { url: string; floorOffset: number }>;
   issuesByObject: Map<string, PlanIssue[]>;
   onCommit: (updates: CommitUpdate[], label: string) => void;
   onGlReady: (
@@ -91,6 +94,7 @@ function Scene({
   backgrounds,
   backgroundUrls,
   textures,
+  models,
   issuesByObject,
   onCommit,
   onGlReady,
@@ -444,6 +448,57 @@ function Scene({
         // Alto REAL, ya girado: es lo que hay que subir para que la base
         // siga apoyada en el suelo y lo que marca dónde va la etiqueta.
         const realH = footprintOf(o).height;
+        const emissive = isSelected
+          ? "#6366f1"
+          : hasError
+            ? "#7f1d1d"
+            : "#000000";
+        const emissiveIntensity = isSelected ? 0.45 : hasError ? 0.35 : 0;
+
+        // Lo mismo para la caja que para el modelo 3D: seleccionar, arrastrar
+        // y acercarse con doble clic.
+        const pointer = {
+          onPointerDown: (e: ThreeEvent<PointerEvent>) => {
+            // Solo el botón izquierdo. Con la rueda se desplaza la vista,
+            // y si el puntero pasaba por encima de algo se lo llevaba por
+            // delante sin querer.
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            if (tool !== "select") return;
+            if (e.shiftKey) toggleInSelection(o.id);
+            else setSelection([o.id]);
+            if (o.locked) return;
+            setDragId(o.id);
+            dragStart.current = {
+              x: Number(o.x),
+              y: Number(o.y),
+              px: e.point.x,
+              pz: e.point.z,
+            };
+            if (controlsRef.current) controlsRef.current.enabled = false;
+          },
+          onPointerUp: endDrag,
+          onDoubleClick: (e: ThreeEvent<MouseEvent>) => {
+            e.stopPropagation();
+            focusOn(o);
+          },
+        };
+
+        const body = (
+          <TexturedMesh
+            shape={o.shape}
+            length={l}
+            width={w}
+            height={h}
+            color={o.color}
+            texture={textures.get(o.id)}
+            emissive={emissive}
+            emissiveIntensity={emissiveIntensity}
+            transparent={o.shape === "plane"}
+            opacity={o.shape === "plane" ? 0.85 : 1}
+            {...pointer}
+          />
+        );
 
         return (
           <group key={o.id} position={[pos.x, Number(o.z) + realH / 2, pos.y]}>
@@ -457,44 +512,21 @@ function Scene({
                 "YXZ",
               ]}
             >
-              <TexturedMesh
-                shape={o.shape}
-                length={l}
-                width={w}
-                height={h}
-                color={o.color}
-                texture={textures.get(o.id)}
-                emissive={
-                  isSelected ? "#6366f1" : hasError ? "#7f1d1d" : "#000000"
-                }
-                emissiveIntensity={isSelected ? 0.45 : hasError ? 0.35 : 0}
-                transparent={o.shape === "plane"}
-                opacity={o.shape === "plane" ? 0.85 : 1}
-                onPointerDown={(e) => {
-                  // Solo el botón izquierdo. Con la rueda se desplaza la vista,
-                  // y si el puntero pasaba por encima de algo se lo llevaba por
-                  // delante sin querer.
-                  if (e.button !== 0) return;
-                  e.stopPropagation();
-                  if (tool !== "select") return;
-                  if (e.shiftKey) toggleInSelection(o.id);
-                  else setSelection([o.id]);
-                  if (o.locked) return;
-                  setDragId(o.id);
-                  dragStart.current = {
-                    x: Number(o.x),
-                    y: Number(o.y),
-                    px: e.point.x,
-                    pz: e.point.z,
-                  };
-                  if (controlsRef.current) controlsRef.current.enabled = false;
-                }}
-                onPointerUp={endDrag}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  focusOn(o);
-                }}
-              />
+              {models.get(o.id) ? (
+                <ModelMesh
+                  url={models.get(o.id)!.url}
+                  floorOffset={models.get(o.id)!.floorOffset}
+                  length={l}
+                  width={w}
+                  height={h}
+                  emissive={emissive}
+                  emissiveIntensity={emissiveIntensity}
+                  fallback={body}
+                  {...pointer}
+                />
+              ) : (
+                body
+              )}
 
               {isSelected ? (
                 <lineSegments position={[0, 0, 0]}>

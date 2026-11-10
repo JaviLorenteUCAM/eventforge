@@ -40,6 +40,7 @@ import {
 } from '@/lib/types';
 import { fmtNum, normalize, volumeOf } from '@/lib/utils';
 import { TextureSection, type TextureFields } from './TextureSection';
+import { ModelSection } from './ModelSection';
 import { VariantsSection } from './VariantsSection';
 import { exportItemsToSheet } from './sheetExport';
 
@@ -416,6 +417,7 @@ export function ItemFormModal({
   const [form, setForm] = useState(EMPTY_FORM);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [texturePath, setTexturePath] = useState<string | null>(null);
+  const [modelPath, setModelPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -458,6 +460,7 @@ export function ItemFormModal({
     );
     setPhotoPath(item?.photo_path ?? null);
     setTexturePath(item?.texture_path ?? null);
+    setModelPath(item?.model_path ?? null);
     setError(null);
   }, [open, item]);
 
@@ -475,6 +478,7 @@ export function ItemFormModal({
       internal_code: form.internal_code.trim() || null,
       photo_path: photoPath,
       texture_path: texturePath,
+      model_path: modelPath,
     };
 
     try {
@@ -687,9 +691,20 @@ export function ItemFormModal({
             keyColor={form.texture_key_color}
             keyTolerance={form.texture_key_tolerance}
             floorOffset={form.texture_floor_offset}
+            hasModel={Boolean(modelPath)}
             folder="almacen"
             onPathChange={setTexturePath}
             onFieldChange={(patch: Partial<TextureFields>) => setForm((f) => ({ ...f, ...patch }))}
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <ModelSection
+            path={modelPath}
+            floorOffset={form.texture_floor_offset}
+            folder="almacen"
+            onPathChange={setModelPath}
+            onFloorOffsetChange={(v) => setForm((f) => ({ ...f, texture_floor_offset: v }))}
           />
         </div>
 

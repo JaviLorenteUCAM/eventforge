@@ -38,3 +38,6 @@ supabase/.branches/
 
 # Salidas de scripts
 .seed-output.json
+
+# Modelos 3D generados (se suben a la ficha desde la app, no al repositorio)
+/modelos/
