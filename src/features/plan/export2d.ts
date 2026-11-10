@@ -8,8 +8,9 @@ import {
   type PlanBackground,
   type PlanConnection,
   type PlanObject,
+  type PlanZone,
 } from '@/lib/types';
-import { cablePath, footprintOf } from '@/lib/geometry';
+import { cablePath, footprintOf, polygonArea, polygonCentroid } from '@/lib/geometry';
 import { fmtNum } from '@/lib/utils';
 import { modelToPlan, placementOf, type Footprint } from './modelFootprint';
 
@@ -43,6 +44,10 @@ export interface ExportOptions {
   photo: boolean;
   cables: boolean;
   venue: boolean;
+  /** Zonas marcadas, rotuladas «1 - Zona Fripozo». */
+  zones: boolean;
+  /** Puntos de luz y de red con su símbolo y numerados (E1, R1…). */
+  feeds: boolean;
 }
 
 export interface ExportInput {
@@ -54,6 +59,7 @@ export interface ExportInput {
   venues: { background: PlanBackground; footprint: Footprint }[];
   /** Fotos de fondo visibles, con la imagen ya en data URL para incrustarla. */
   photos: { background: PlanBackground; href: string }[];
+  zones: PlanZone[];
   author: string;
 }
 
@@ -85,6 +91,9 @@ export interface Drawing {
   contact: Pt[][];
   roofEdges: [Pt, Pt][];
   photos: ExportInput['photos'];
+  zones: { zone: PlanZone; points: Pt[]; centre: Pt; area: number }[];
+  /** Puntos de luz (E1, E2…) y de red (R1, R2…). */
+  feeds: { object: PlanObject; code: string }[];
   input: ExportInput;
   options: ExportOptions;
 }
@@ -128,6 +137,16 @@ export function buildDrawing(input: ExportInput, options: ExportOptions): Drawin
   for (const o of input.objects) {
     if (o.shape === 'text' || o.shape === 'line') {
       items.push({ object: o, mark: null, polygon: null, circle: null });
+      continue;
+    }
+    if (options.feeds && FEED.has(o.kind)) {
+      const f = footprintOf(o);
+      items.push({
+        object: o,
+        mark: null,
+        polygon: null,
+        circle: { c: { x: Number(o.x), y: Number(o.y) }, r: Math.max(f.length, f.width) / 2 },
+      });
       continue;
     }
     const key = `${nameOf(o)}|${dimsOf(o)}`;
@@ -174,6 +193,31 @@ export function buildDrawing(input: ExportInput, options: ExportOptions): Drawin
     }
   }
 
+  const zones = options.zones
+    ? input.zones
+        .map((zone) => {
+          const points = (zone.points ?? []).map((p) => ({ x: Number(p.x), y: Number(p.y) }));
+          return { zone, points, centre: polygonCentroid(points), area: polygonArea(points) };
+        })
+        .filter((z) => z.points.length >= 3)
+        .sort((a, b) => a.zone.number - b.zone.number)
+    : [];
+
+  // Numeradas por tipo y de izquierda a derecha y de arriba abajo, que es
+  // como se buscan en el plano.
+  const feeds: Drawing['feeds'] = [];
+  if (options.feeds) {
+    for (const [kind, prefix] of [
+      ['power_source', 'E'],
+      ['network_source', 'R'],
+    ] as const) {
+      input.objects
+        .filter((o) => o.kind === kind)
+        .sort((a, b) => Number(a.y) - Number(b.y) || Number(a.x) - Number(b.x))
+        .forEach((object, i) => feeds.push({ object, code: `${prefix}${i + 1}` }));
+    }
+  }
+
   // Lo que se dibuja manda en el encuadre; la foto se recorta a él.
   const pts: Pt[] = [
     { x: 0, y: 0 },
@@ -187,6 +231,7 @@ export function buildDrawing(input: ExportInput, options: ExportOptions): Drawin
   for (const c of cables) pts.push(...c.points);
   for (const t of contact) pts.push(...t);
   for (const [a, b] of roofEdges) pts.push(a, b);
+  for (const z of zones) pts.push(...z.points);
   const bounds = {
     minX: Math.min(...pts.map((p) => p.x)),
     minY: Math.min(...pts.map((p) => p.y)),
@@ -204,6 +249,8 @@ export function buildDrawing(input: ExportInput, options: ExportOptions): Drawin
     contact,
     roofEdges,
     photos: options.photo ? input.photos : [],
+    zones,
+    feeds,
     input,
     options,
   };
@@ -314,6 +361,13 @@ export function toSvg(d: Drawing): string {
     `<rect x="${n(r0.x)}" y="${n(r0.y)}" width="${n(d.width * sh.k)}" height="${n(d.depth * sh.k)}" fill="none" stroke="#000" stroke-width="0.5"/>`,
   );
 
+  // Zonas: velo de color y borde discontinuo, bajo todo lo demás.
+  for (const z of d.zones) {
+    out.push(
+      `<path d="${pathOf(z.points, true)}" fill="${z.zone.color}" fill-opacity="0.12" stroke="${z.zone.color}" stroke-width="0.4" stroke-dasharray="2.2 1.2"/>`,
+    );
+  }
+
   // Recinto 3D: cubiertas en discontinua y, encima, lo que toca el suelo.
   if (d.roofEdges.length) {
     out.push(
@@ -357,7 +411,7 @@ export function toSvg(d: Drawing): string {
     } else if (it.polygon) {
       out.push(`<path d="${pathOf(it.polygon, true)}" fill="${fill}" fill-opacity="0.9" stroke="#000" stroke-width="0.25"/>`);
     }
-    if (FEED.has(o.kind)) {
+    if (FEED.has(o.kind) && !d.options.feeds) {
       const c = P({ x: Number(o.x), y: Number(o.y) });
       out.push(
         `<text x="${n(c.x)}" y="${n(c.y)}" font-size="2" font-weight="bold" text-anchor="middle" dominant-baseline="central">${o.kind === 'power_source' ? 'E' : 'R'}</text>`,
@@ -373,6 +427,23 @@ export function toSvg(d: Drawing): string {
     out.push(
       `<circle cx="${n(c.x)}" cy="${n(c.y)}" r="${r}" fill="#fff" stroke="#000" stroke-width="0.18"/>`,
       `<text x="${n(c.x)}" y="${n(c.y)}" font-size="${it.mark >= 100 ? 1.6 : 2}" text-anchor="middle" dominant-baseline="central">${it.mark}</text>`,
+    );
+  }
+  for (const fd of d.feeds) {
+    const c = P({ x: Number(fd.object.x), y: Number(fd.object.y) });
+    out.push(feedSymbol(fd.object.kind, c.x, c.y, 2.3));
+    out.push(
+      `<text x="${n(c.x + 3)}" y="${n(c.y - 2.4)}" font-size="2.2" font-weight="bold" stroke="#fff" stroke-width="0.6" paint-order="stroke">${fd.code}</text>`,
+    );
+  }
+
+  for (const z of d.zones) {
+    const c = P(z.centre);
+    const label = `${z.zone.number} - ${z.zone.name || 'Zona'}`;
+    const wl = label.length * 1.6 + 4;
+    out.push(
+      `<rect x="${n(c.x - wl / 2)}" y="${n(c.y - 2.6)}" width="${n(wl)}" height="5.2" rx="1" fill="#fff" stroke="${z.zone.color}" stroke-width="0.4"/>`,
+      `<text x="${n(c.x)}" y="${n(c.y)}" font-size="2.8" font-weight="bold" text-anchor="middle" dominant-baseline="central">${esc(label)}</text>`,
     );
   }
   out.push(`</g>`);
@@ -425,6 +496,39 @@ export function toSvg(d: Drawing): string {
   return out.join('\n');
 }
 
+/**
+ * Símbolo de un suministro, centrado en (cx, cy) y de radio r (mm): punto de
+ * luz, un círculo con el rayo; punto de red, un cuadrado con tres nodos
+ * enlazados.
+ */
+function feedSymbol(kind: string, cx: number, cy: number, r: number): string {
+  const k = r / 2.3;
+  if (kind === 'power_source') {
+    const bolt = [
+      [0.5, -1.6],
+      [-0.9, 0.25],
+      [-0.05, 0.25],
+      [-0.45, 1.6],
+      [0.95, -0.3],
+      [0.1, -0.3],
+    ]
+      .map(([px, py], i) => `${i ? 'L' : 'M'}${n(cx + px * k)} ${n(cy + py * k)}`)
+      .join('');
+    return (
+      `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(r)}" fill="#fff" stroke="#000" stroke-width="0.3"/>` +
+      `<path d="${bolt}Z" fill="#000"/>`
+    );
+  }
+  const t = { x: cx, y: cy - 1.05 * k };
+  const a = { x: cx - 1.1 * k, y: cy + 0.95 * k };
+  const b = { x: cx + 1.1 * k, y: cy + 0.95 * k };
+  return (
+    `<rect x="${n(cx - r)}" y="${n(cy - r)}" width="${n(r * 2)}" height="${n(r * 2)}" rx="${n(r * 0.2)}" fill="#fff" stroke="#000" stroke-width="0.3"/>` +
+    `<path d="M${n(t.x)} ${n(t.y)}L${n(a.x)} ${n(a.y)}M${n(t.x)} ${n(t.y)}L${n(b.x)} ${n(b.y)}M${n(a.x)} ${n(a.y)}L${n(b.x)} ${n(b.y)}" stroke="#000" stroke-width="0.25"/>` +
+    [t, a, b].map((p) => `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(0.45 * k)}" fill="#000"/>`).join('')
+  );
+}
+
 /** Leyenda y cajetín. */
 function sideColumn(d: Drawing, sh: Sheet): string[] {
   const { x, y, w, h } = sh.side;
@@ -451,7 +555,11 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
 
   // Lo que viene después de la tabla también necesita sitio.
   const kinds = [...new Set(d.cables.map((c) => c.kind))];
-  const extra = (kinds.length ? 6 + kinds.length * 4.2 : 0) + (d.contact.length || d.roofEdges.length ? 14 : 0);
+  const extra =
+    (kinds.length ? 6 + kinds.length * 4.2 : 0) +
+    (d.contact.length || d.roofEdges.length ? 14 : 0) +
+    (d.zones.length ? 7 + d.zones.length * 4.2 : 0) +
+    (d.feeds.length ? 7 + d.feeds.length * 4.6 : 0);
   const rowH = 6.4;
   const maxRows = Math.max(0, Math.floor((legendBottom - cy - extra) / rowH));
   const rows = d.legend.slice(0, d.legend.length > maxRows ? maxRows - 1 : maxRows);
@@ -473,6 +581,32 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
     out.push(
       `<text x="${col.name}" y="${cy}" font-size="2" fill="#555">… y ${d.legend.length - rows.length} elementos más (ver listado de material)</text>`,
     );
+  }
+
+  if (d.zones.length) {
+    cy += 7;
+    out.push(`<text x="${x + 4}" y="${cy}" font-size="2.4" font-weight="bold">ZONAS</text>`);
+    for (const z of d.zones) {
+      cy += 4.2;
+      out.push(
+        `<rect x="${x + 4}" y="${cy - 2.7}" width="8" height="3.2" fill="${z.zone.color}" fill-opacity="0.18" stroke="${z.zone.color}" stroke-width="0.35" stroke-dasharray="1.4 0.8"/>`,
+        `<text x="${x + 14}" y="${cy}" font-size="2.1">${esc(fit(`${z.zone.number} - ${z.zone.name || 'Zona'}`, Math.max(10, nameChars - 6)))}</text>`,
+        `<text x="${x + w - 4}" y="${cy}" font-size="1.9" fill="#555" text-anchor="end">${fmtNum(z.area, 1)} m²</text>`,
+      );
+    }
+  }
+
+  if (d.feeds.length) {
+    cy += 7;
+    out.push(`<text x="${x + 4}" y="${cy}" font-size="2.4" font-weight="bold">SUMINISTROS</text>`);
+    for (const fd of d.feeds) {
+      cy += 4.6;
+      out.push(
+        feedSymbol(fd.object.kind, x + 8, cy - 0.8, 1.7),
+        `<text x="${x + 12}" y="${cy}" font-size="2.1" font-weight="bold">${fd.code}</text>`,
+        `<text x="${x + 19}" y="${cy}" font-size="2.1">${esc(fit(nameOf(fd.object), Math.max(10, nameChars - 4)))}</text>`,
+      );
+    }
   }
 
   if (kinds.length) {
@@ -549,6 +683,8 @@ const LAYERS: { name: string; color: number; ltype?: string }[] = [
   { name: 'CABLE-USB', color: 3 },
   { name: 'PILARES', color: 250 },
   { name: 'CUBIERTAS', color: 9, ltype: 'DASHED' },
+  { name: 'ZONAS', color: 5, ltype: 'DASHED' },
+  { name: 'SUMINISTROS', color: 1 },
 ];
 
 const CABLE_LAYER: Record<ConnectionKind, string> = {
@@ -634,6 +770,16 @@ export function toDxf(d: Drawing): string {
     g(13, X(t[2].x)); g(23, Y(t[2].y)); g(33, 0);
   }
 
+  for (const z of d.zones) {
+    poly('ZONAS', z.points, true);
+    text('ZONAS', z.centre, 2.8 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'}`);
+  }
+  for (const fd of d.feeds) {
+    const c = { x: Number(fd.object.x), y: Number(fd.object.y) };
+    g(0, 'CIRCLE'); g(8, 'SUMINISTROS'); g(10, X(c.x)); g(20, Y(c.y)); g(30, 0); g(40, (2.3 * mm).toFixed(3));
+    text('SUMINISTROS', { x: c.x + 3 * mm, y: c.y - 2.4 * mm }, 2.2 * mm, fd.code, 0, false);
+  }
+
   for (const c of d.cables) poly(CABLE_LAYER[c.kind], c.points, false);
 
   for (const it of d.items) {
@@ -654,7 +800,7 @@ export function toDxf(d: Drawing): string {
       poly('OBJETOS', it.polygon, true);
     }
     if (FEED.has(o.kind)) {
-      text('MARCAS', c, 2 * mm, o.kind === 'power_source' ? 'E' : 'R');
+      if (!d.options.feeds) text('MARCAS', c, 2 * mm, o.kind === 'power_source' ? 'E' : 'R');
     } else if (it.mark != null) {
       g(0, 'CIRCLE'); g(8, 'MARCAS'); g(10, X(c.x)); g(20, Y(c.y)); g(30, 0); g(40, (2 * mm).toFixed(3));
       text('MARCAS', c, 2 * mm, String(it.mark));
@@ -668,6 +814,22 @@ export function toDxf(d: Drawing): string {
   for (const r of d.legend) {
     ly += 4.5 * mm;
     text('TEXTOS', { x: lx, y: ly }, 2.1 * mm, `${r.mark}. ${r.name} (${r.dims} m) x${r.count}`, 0, false);
+  }
+  if (d.zones.length) {
+    ly += 7 * mm;
+    text('TEXTOS', { x: lx, y: ly }, 2.6 * mm, 'ZONAS', 0, false);
+    for (const z of d.zones) {
+      ly += 4.5 * mm;
+      text('TEXTOS', { x: lx, y: ly }, 2.1 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'} (${fmtNum(z.area, 1)} m2)`, 0, false);
+    }
+  }
+  if (d.feeds.length) {
+    ly += 7 * mm;
+    text('TEXTOS', { x: lx, y: ly }, 2.6 * mm, 'SUMINISTROS', 0, false);
+    for (const fd of d.feeds) {
+      ly += 4.5 * mm;
+      text('TEXTOS', { x: lx, y: ly }, 2.1 * mm, `${fd.code} ${nameOf(fd.object)}`, 0, false);
+    }
   }
 
   g(0, 'ENDSEC');

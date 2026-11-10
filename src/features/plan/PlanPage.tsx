@@ -26,6 +26,7 @@ import {
   Usb,
   Landmark,
   FileDown,
+  VectorSquare,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ import {
 } from '@/data/plans';
 import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
 import { useEvent } from '@/data/events';
+import { useCreateZone, useDeleteZone, usePlanZones, useUpdateZone } from '@/data/zones';
 import { useRealtime } from '@/data/realtime';
 import { qk } from '@/data/keys';
 import { analyzePlan, powerBudget } from '@/lib/issues';
@@ -190,6 +192,8 @@ export function PlanPage() {
   const [rightOpen, setRightOpen] = useState(true);
   const [rightTab, setRightTab] = useState<'inspector' | 'background'>('inspector');
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [confirmDeleteZone, setConfirmDeleteZone] = useState(false);
   const [selectedBackgroundId, setSelectedBackgroundId] = useState<string | null>(null);
   const [calibration, setCalibration] = useState<CalibrationLine | null>(null);
   const [textureFlowOpen, setTextureFlowOpen] = useState(false);
@@ -307,6 +311,47 @@ export function PlanPage() {
     };
   }, [catalog.data, items.data]);
 
+  const zonesQuery = usePlanZones(plan?.id);
+  const zoneList = useMemo(() => zonesQuery.data ?? [], [zonesQuery.data]);
+  const selectedZone = zoneList.find((z) => z.id === selectedZoneId) ?? null;
+  const createZone = useCreateZone();
+  const updateZone = useUpdateZone();
+  const deleteZone = useDeleteZone();
+
+  /**
+   * Zona nueva al poner el cuarto pin: el número siguiente, un nombre de
+   * partida y un color distinto del de la anterior. Se selecciona para
+   * ponerle nombre en el panel.
+   */
+  const handleCreateZone = useCallback(
+    (points: Waypoint[]) => {
+      if (!plan) return;
+      const number = zoneList.reduce((m, z) => Math.max(m, Number(z.number) || 0), 0) + 1;
+      const palette = ['#22d3ee', '#f59e0b', '#a78bfa', '#34d399', '#f472b6', '#60a5fa', '#f87171', '#facc15'];
+      createZone.mutate(
+        {
+          plan_id: plan.id,
+          number,
+          name: `Zona ${number}`,
+          color: palette[(number - 1) % palette.length],
+          points,
+        },
+        {
+          onSuccess: (z) => {
+            setTool('select');
+            clearSelection();
+            setSelectedConnectionId(null);
+            setSelectedZoneId(z.id);
+            setRightTab('inspector');
+            toast.success(`Zona ${number} creada: ponle nombre en el panel`);
+          },
+          onError: (e) => toast.error(e instanceof Error ? e.message : 'No se ha podido crear la zona'),
+        },
+      );
+    },
+    [plan, zoneList, createZone, setTool, clearSelection],
+  );
+
   useRealtime(
     `plan-${plan?.id}`,
     plan
@@ -325,6 +370,11 @@ export function PlanPage() {
             table: 'plan_backgrounds',
             filter: `plan_id=eq.${plan.id}`,
             invalidate: [qk.planBackgrounds(plan.id)],
+          },
+          {
+            table: 'plan_zones',
+            filter: `plan_id=eq.${plan.id}`,
+            invalidate: [qk.planZones(plan.id)],
           },
         ]
       : [],
@@ -980,6 +1030,11 @@ export function PlanPage() {
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedZoneId) {
+          e.preventDefault();
+          setConfirmDeleteZone(true);
+          return;
+        }
         if (selectedConnection) {
           e.preventDefault();
           void handleDeleteConnection();
@@ -992,6 +1047,7 @@ export function PlanPage() {
       if (e.key === 'Escape') {
         clearSelection();
         setSelectedConnectionId(null);
+        setSelectedZoneId(null);
         setLinkFrom(null);
         setTool('select');
         return;
@@ -1046,6 +1102,7 @@ export function PlanPage() {
     history,
     selectedObjects,
     selectedConnection,
+    selectedZoneId,
     clipboard,
     objectList,
     plan,
@@ -1093,7 +1150,7 @@ export function PlanPage() {
           onChange={(t) => {
             // Medir y calibrar se hacen sobre la planta: si se eligen desde la
             // vista 3D, se cambia a 2D en vez de no hacer nada.
-            if ((t === 'measure' || t === 'calibrate') && mode !== '2d') setMode('2d');
+            if ((t === 'measure' || t === 'calibrate' || t === 'zone') && mode !== '2d') setMode('2d');
             setTool(t);
           }}
           size="sm"
@@ -1127,6 +1184,12 @@ export function PlanPage() {
               title: 'Cable USB: ratones, teclados, lectores…',
               label: <span className="hidden sm:inline">USB</span>,
               icon: <Usb className="size-3.5" />,
+            },
+            {
+              value: 'zone',
+              title: 'Zona: marca un área con cuatro pines',
+              label: <span className="hidden sm:inline">Zona</span>,
+              icon: <VectorSquare className="size-3.5" />,
             },
             {
               value: 'measure',
@@ -1306,6 +1369,12 @@ export function PlanPage() {
                 : `¿No hay de dónde tirar? En «Del evento» tienes el punto de ${tool === 'power' ? 'luz' : 'red'}, la acometida de la sala.`}
           </span>
         </div>
+      ) : tool === 'zone' ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
+          <VectorSquare className="size-3.5 shrink-0 text-accent-soft" />
+          <span className="text-ink">Haz clic en cuatro puntos para marcar la zona.</span>
+          <span className="text-dim">Mayús invierte el ajuste a la rejilla · Esc cancela.</span>
+        </div>
       ) : tool === 'measure' ? (
         <div className="flex shrink-0 items-center gap-2 border-b border-line bg-[color-mix(in_oklab,var(--ef-accent)_10%,transparent)] px-3 py-1.5 text-[12.5px] text-muted">
           <Ruler className="size-3.5 shrink-0 text-accent-soft" />
@@ -1330,6 +1399,16 @@ export function PlanPage() {
               backgrounds={backgroundList}
               backgroundUrls={backgroundUrls}
               backgroundModelUrls={backgroundModelUrls}
+              zones={zoneList}
+              selectedZoneId={selectedZoneId}
+              onSelectZone={(id) => {
+                setSelectedZoneId(id);
+                if (id) setRightTab('inspector');
+              }}
+              onCreateZone={handleCreateZone}
+              onZoneCommit={(id, points) =>
+                plan && updateZone.mutate({ id, planId: plan.id, patch: { points } })
+              }
               selectedBackgroundId={selectedBackgroundId}
               onSelectBackground={(id) => {
                 setSelectedBackgroundId(id);
@@ -1360,6 +1439,7 @@ export function PlanPage() {
               backgroundModelUrls={backgroundModelUrls}
               textures={textures}
               models={models}
+              zones={zoneList}
               issuesByObject={issuesByObject}
               onCommit={(u, l) => void commit(u, l)}
               onGlReady={(gl, scene, camera) => {
@@ -1405,6 +1485,18 @@ export function PlanPage() {
                   onDelete={() => setConfirmDelete(true)}
                   onDuplicate={() => void duplicateObjects(selectedObjects)}
                   onDeleteConnection={() => void handleDeleteConnection()}
+                  zone={selectedZone}
+                  zones={zoneList}
+                  onSelectZone={(id) => {
+                    clearSelection();
+                    setSelectedConnectionId(null);
+                    setSelectedZoneId(id);
+                  }}
+                  onZoneChange={(patch) =>
+                    selectedZone &&
+                    updateZone.mutate({ id: selectedZone.id, planId: plan.id, patch })
+                  }
+                  onZoneDelete={() => setConfirmDeleteZone(true)}
                   onPlanChange={(patch: Partial<Plan>) =>
                     updatePlan.mutate(
                       { id: plan.id, patch },
@@ -1537,6 +1629,18 @@ export function PlanPage() {
               }}
               onDuplicate={() => void duplicateObjects(selectedObjects)}
               onDeleteConnection={() => void handleDeleteConnection()}
+              zone={selectedZone}
+              zones={zoneList}
+              onSelectZone={(id) => {
+                clearSelection();
+                setSelectedConnectionId(null);
+                setSelectedZoneId(id);
+              }}
+              onZoneChange={(patch) =>
+                selectedZone &&
+                updateZone.mutate({ id: selectedZone.id, planId: plan.id, patch })
+              }
+              onZoneDelete={() => setConfirmDeleteZone(true)}
               onPlanChange={(patch: Partial<Plan>) => updatePlan.mutate({ id: plan.id, patch })}
             />
           ) : (
@@ -1706,6 +1810,30 @@ export function PlanPage() {
         }
       />
 
+      <ConfirmDialog
+        open={confirmDeleteZone}
+        onCancel={() => setConfirmDeleteZone(false)}
+        title="Eliminar zona"
+        message={
+          selectedZone
+            ? `Se quitará «${selectedZone.number} - ${selectedZone.name || 'Zona'}» del plano.`
+            : ''
+        }
+        onConfirm={() => {
+          if (!selectedZone || !plan) return;
+          deleteZone.mutate(
+            { id: selectedZone.id, planId: plan.id },
+            {
+              onSuccess: () => {
+                setSelectedZoneId(null);
+                toast.success('Zona eliminada');
+              },
+            },
+          );
+          setConfirmDeleteZone(false);
+        }}
+      />
+
       <ExportPlanModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
@@ -1716,6 +1844,7 @@ export function PlanPage() {
         backgrounds={backgroundList}
         backgroundUrls={backgroundUrls}
         backgroundModelUrls={backgroundModelUrls}
+        zones={zoneList}
         author={profile?.name ?? ''}
       />
 

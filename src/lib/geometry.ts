@@ -294,3 +294,41 @@ export function rotateAround(p: Waypoint, center: Waypoint, degrees: number): Wa
     y: round(center.y + dx * Math.sin(rad) + dy * Math.cos(rad), 3),
   };
 }
+
+/** Área de un polígono (m²), por la fórmula del cordón. */
+export function polygonArea(points: Waypoint[]): number {
+  let a = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % points.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a / 2);
+}
+
+/**
+ * Centro de un polígono: el centro de gravedad de su superficie, que es donde
+ * va el rótulo de una zona. Si está degenerado (todos los pines en línea), la
+ * media de los vértices.
+ */
+export function polygonCentroid(points: Waypoint[]): Waypoint {
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % points.length];
+    const cross = p.x * q.y - q.x * p.y;
+    a += cross;
+    cx += (p.x + q.x) * cross;
+    cy += (p.y + q.y) * cross;
+  }
+  if (Math.abs(a) < 1e-9) {
+    const n = Math.max(1, points.length);
+    return {
+      x: points.reduce((s, p) => s + p.x, 0) / n,
+      y: points.reduce((s, p) => s + p.y, 0) / n,
+    };
+  }
+  return { x: cx / (3 * a), y: cy / (3 * a) };
+}

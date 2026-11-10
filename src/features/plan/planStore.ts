@@ -8,7 +8,9 @@ export type PlanTool =
   | 'signal'
   | 'usb'
   | 'calibrate'
-  | 'measure';
+  | 'measure'
+  /** Marcar una zona con cuatro pines. */
+  | 'zone';
 export type PlanMode = '2d' | '3d';
 
 interface PlanEditorState {

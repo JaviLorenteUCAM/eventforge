@@ -19,9 +19,10 @@ import {
   type PlanConnection,
   type PlanIssue,
   type PlanObject,
+  type PlanZone,
 } from '@/lib/types';
 import { OBJECT_KINDS, OBJECT_KIND_LABEL, type ObjectKind } from '@/lib/types';
-import { centroidOf, footprintOf, rotateAround } from '@/lib/geometry';
+import { centroidOf, footprintOf, polygonArea, rotateAround } from '@/lib/geometry';
 import { cn, fmtM3, fmtNum, volumeOf } from '@/lib/utils';
 import type { CommitUpdate } from './Editor2D';
 
@@ -39,6 +40,12 @@ interface Props {
   onDuplicate: () => void;
   onDeleteConnection: () => void;
   onPlanChange: (patch: Partial<Plan>) => void;
+  /** Zona seleccionada en el plano, si la hay. */
+  zone?: PlanZone | null;
+  zones?: PlanZone[];
+  onSelectZone?: (id: string) => void;
+  onZoneChange?: (patch: Partial<PlanZone>) => void;
+  onZoneDelete?: () => void;
 }
 
 export function Inspector({
@@ -54,7 +61,16 @@ export function Inspector({
   onDuplicate,
   onDeleteConnection,
   onPlanChange,
+  zone = null,
+  zones = [],
+  onSelectZone,
+  onZoneChange,
+  onZoneDelete,
 }: Props) {
+  if (zone && onZoneChange && onZoneDelete) {
+    return <ZoneInspector zone={zone} onChange={onZoneChange} onDelete={onZoneDelete} />;
+  }
+
   if (connection) {
     return (
       <ConnectionInspector
@@ -66,7 +82,7 @@ export function Inspector({
   }
 
   if (selected.length === 0) {
-    return <PlanInspector plan={plan} onChange={onPlanChange} />;
+    return <PlanInspector plan={plan} onChange={onPlanChange} zones={zones} onSelectZone={onSelectZone} />;
   }
 
   if (selected.length > 1) {
@@ -703,7 +719,110 @@ function ConnectionInspector({
   );
 }
 
-function PlanInspector({ plan, onChange }: { plan: Plan; onChange: (patch: Partial<Plan>) => void }) {
+/** Colores para distinguir zonas de un vistazo. */
+const ZONE_COLORS = ['#22d3ee', '#f59e0b', '#a78bfa', '#34d399', '#f472b6', '#60a5fa', '#f87171', '#facc15'];
+
+/**
+ * Zona marcada: número y nombre (salen en el plano exportado como
+ * «1 - Zona Fripozo»), color y superficie. Los pines se mueven en el plano.
+ */
+function ZoneInspector({
+  zone,
+  onChange,
+  onDelete,
+}: {
+  zone: PlanZone;
+  onChange: (patch: Partial<PlanZone>) => void;
+  onDelete: () => void;
+}) {
+  const [name, setName] = useState(zone.name);
+  const [editing, setEditing] = useState(zone.id);
+  if (editing !== zone.id) {
+    setEditing(zone.id);
+    setName(zone.name);
+  }
+  const area = polygonArea((zone.points ?? []).map((p) => ({ x: Number(p.x), y: Number(p.y) })));
+
+  return (
+    <div className="flex h-full flex-col">
+      <Section title="Zona">
+        <div className="grid grid-cols-[80px_1fr] gap-2">
+          <Field label="Número">
+            <NumberInput
+              value={Number(zone.number)}
+              onChange={(v) => onChange({ number: Math.max(0, Math.min(9999, Math.round(v))) })}
+              step={1}
+            />
+          </Field>
+          <Field label="Nombre">
+            <Input
+              value={name}
+              maxLength={120}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => {
+                if (name !== zone.name) onChange({ name: name.trim() });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+              className="h-9"
+              placeholder="Zona Fripozo"
+            />
+          </Field>
+        </div>
+        <p className="rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-[12.5px] text-ink">
+          En el plano exportado:{' '}
+          <strong>
+            {zone.number} - {name.trim() || 'Zona'}
+          </strong>
+        </p>
+        <Field label="Color">
+          <div className="flex flex-wrap gap-1.5">
+            {ZONE_COLORS.map((c) => (
+              <button
+                key={c}
+                onClick={() => onChange({ color: c })}
+                aria-label={`Color ${c}`}
+                className={cn(
+                  'size-6 rounded-full border-2 transition-transform hover:scale-110',
+                  zone.color === c ? 'border-ink' : 'border-transparent',
+                )}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </Field>
+        <p className="num text-[12px] text-muted">Superficie {fmtNum(area, 1)} m²</p>
+        <p className="text-[12px] text-dim">
+          Arrastra los pines para cambiar la forma, o el rótulo para moverla entera.
+        </p>
+      </Section>
+      <div className="mt-auto border-t border-line p-3">
+        <Button
+          size="sm"
+          variant="danger"
+          className="w-full justify-center"
+          icon={<Trash2 className="size-3.5" />}
+          onClick={onDelete}
+        >
+          Eliminar zona
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PlanInspector({
+  plan,
+  onChange,
+  zones = [],
+  onSelectZone,
+}: {
+  plan: Plan;
+  onChange: (patch: Partial<Plan>) => void;
+  zones?: PlanZone[];
+  onSelectZone?: (id: string) => void;
+}) {
   return (
     <div className="flex h-full flex-col">
       <Section title="Recinto">
@@ -751,6 +870,30 @@ function PlanInspector({ plan, onChange }: { plan: Plan; onChange: (patch: Parti
             min={0.05}
           />
         </Field>
+      </Section>
+
+      <Section title="Zonas">
+        {zones.length === 0 ? (
+          <p className="text-[12px] text-dim">
+            Con la herramienta <strong className="text-muted">Zona</strong> de la barra, cuatro clics
+            marcan un área con número y nombre, que sale rotulada en el plano exportado.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {zones.map((z) => (
+              <li key={z.id}>
+                <button
+                  onClick={() => onSelectZone?.(z.id)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink transition-colors hover:bg-surface-2"
+                >
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: z.color }} />
+                  <span className="num w-6 shrink-0 text-muted">{z.number}</span>
+                  <span className="truncate">{z.name || 'Zona'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="Atajos y ratón">

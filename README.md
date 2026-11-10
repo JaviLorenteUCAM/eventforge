@@ -180,6 +180,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 16 | `supabase/migrations/0016_object_models.sql` | Modelos 3D (.glb) en el material y el catálogo, y su bucket |
 | 17 | `supabase/migrations/0017_background_models.sql` | Modelo 3D del recinto, pegado a la imagen de fondo |
 | 18 | `supabase/migrations/0018_background_model_adjust.sql` | Ajuste del modelo del recinto: desplazamiento, giro y escala |
+| 19 | `supabase/migrations/0019_plan_zones.sql` | Zonas del plano (número, nombre, color y pines) |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -589,7 +590,8 @@ eventforge/
 │       ├── 0015_model_floor_offset.sql # altura del suelo del modelo
 │       ├── 0016_object_models.sql     # modelos 3D (.glb) y bucket models
 │       ├── 0017_background_models.sql # modelo 3D del recinto en la capa de fondo
-│       └── 0018_background_model_adjust.sql # ajuste del modelo sobre su imagen
+│       ├── 0018_background_model_adjust.sql # ajuste del modelo sobre su imagen
+│       └── 0019_plan_zones.sql        # zonas marcadas del plano
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -736,6 +738,15 @@ paso de deshacer: una sola vuelta atrás devuelve los objetos y sus cables.
 El **deshacer** está basado en comandos: cada acción sabe cómo revertirse escribiendo en la
 base de datos, de modo que al deshacer el resto del equipo también ve el resultado.
 
+### Zonas
+
+La herramienta **Zona** de la barra marca un área con **cuatro clics** (con el ajuste a la rejilla;
+Mayús lo invierte, Esc cancela). Cada zona lleva **número, nombre y color**, se ve en el 2D con
+su rótulo («1 - Zona Fripozo») y su superficie, y en el 3D pintada en el suelo. Seleccionada, se
+cambia de forma arrastrando sus pines y se mueve entera arrastrando el rótulo; el nombre, el
+número y el color se editan en el panel, que sin nada seleccionado muestra la lista de zonas. Las
+zonas viajan con el plano al duplicar el evento y al guardar o cargar un escenario.
+
 ### Exportar el plano en 2D
 
 **Exportar plano** (junto a *Captura*) saca un plano para montar, no una foto de la pantalla:
@@ -746,6 +757,10 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
 - los objetos dibujados en planta, cada uno con una **marca numerada**; los iguales (mismo
   nombre y medidas) comparten número y la **leyenda** dice cuántos hay y sus medidas;
 - el **cableado** por tipos, con su leyenda;
+- las **zonas** rotuladas («1 - Zona Fripozo») con su superficie en la leyenda;
+- los **puntos de luz y de red** con su símbolo (círculo con el rayo; cuadrado con tres nodos) y
+  numerados (E1, E2… R1, R2…, de arriba abajo y de izquierda a derecha), en una sección
+  *Suministros* de la leyenda con su nombre;
 - del **modelo 3D del recinto**, todo lo que **toca el suelo** (los pilares de unas pérgolas) en
   negro macizo y el contorno de las cubiertas en discontinua, que es como se dibuja en planta
   lo que queda por encima. Lo que toca el suelo se saca de la geometría (las caras de abajo a ras
@@ -755,7 +770,8 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
 
 Formatos: **PDF** (por la impresión del navegador, vectorial y a escala exacta: «Guardar como
 PDF» al 100 %), **SVG** y **DXF** para AutoCAD y cualquier programa de CAD, en metros reales y
-por capas (RECINTO, COTAS, OBJETOS, MARCAS, TEXTOS, una por tipo de cable, PILARES y CUBIERTAS).
+por capas (RECINTO, COTAS, OBJETOS, MARCAS, TEXTOS, ZONAS, SUMINISTROS, una por tipo de cable,
+PILARES y CUBIERTAS).
 
 ### Imagen de fondo y calibración a escala real
 

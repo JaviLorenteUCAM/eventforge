@@ -93,6 +93,7 @@ const FILES = [
   '0016_object_models.sql',
   '0017_background_models.sql',
   '0018_background_model_adjust.sql',
+  '0019_plan_zones.sql',
 ];
 let allOk = true;
 
@@ -285,7 +286,10 @@ await db.exec(`
     (plan_id, storage_path, label, opacity, x, y, width_m, height_m, model_path,
      model_offset_x, model_offset_y, model_rotation, model_scale)
   values ('${planId}', 'demo/patio.jpg', 'Foto aérea', 0.55, 0, 0, 18, 12, 'recintos/pergolas.glb',
-          2.5, -1.25, 12.5, 1.05)
+          2.5, -1.25, 12.5, 1.05);
+  insert into public.plan_zones (plan_id, number, name, color, points)
+  values ('${planId}', 1, 'Zona Fripozo', '#f59e0b',
+          '[{"x":1,"y":1},{"x":6,"y":1},{"x":6,"y":4},{"x":1,"y":4}]');
 `);
 
 const scen = await db.query(
@@ -359,7 +363,29 @@ console.log(
       ? '  \x1b[32m✓\x1b[0m El modelo 3D del recinto y su ajuste viajan con su imagen (escenario y duplicado)'
       : `  \x1b[31m✗\x1b[0m El modelo del recinto se pierde: ${JSON.stringify([enPlano2.rows, enCopia.rows])}`,
   );
+
+  // Zonas (0019): viajan al escenario, vuelven al cargarlo y al duplicar.
+  const zonas = await db.query(`
+    select
+      (select count(*)::int from public.scenario_zones where scenario_id='${scenarioId}') as escenario,
+      (select string_agg(number || ' - ' || name, ',') from public.plan_zones where plan_id='${plan2Id}') as cargada,
+      (select string_agg(z.number || ' - ' || z.name || ' ' || jsonb_array_length(z.points), ',')
+         from public.plan_zones z join public.plans p on p.id = z.plan_id
+        where p.event_id = '${dup.rows[0].id}') as copia`);
+  const z = zonas.rows[0];
+  const zok = z.escenario === 1 && z.cargada === '1 - Zona Fripozo' && z.copia === '1 - Zona Fripozo 4';
+  if (!zok) allOk = false;
+  console.log(
+    zok
+      ? '  \x1b[32m✓\x1b[0m Las zonas viajan con el plano (escenario, carga y duplicado)'
+      : `  \x1b[31m✗\x1b[0m Las zonas se pierden: ${JSON.stringify(z)}`,
+  );
 }
+
+await mustFail(
+  'Una zona con los vértices mal guardados se rechaza',
+  `insert into public.plan_zones (plan_id, points) values ('${planId}', '{"x":1}')`,
+);
 
 // Texturas del material del almacén (modelo «almacén primero»: la ficha del
 // almacén es la que define forma, color y textura de lo que se coloca).

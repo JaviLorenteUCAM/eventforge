@@ -4,6 +4,7 @@ import { dashFor, isCableTool, isFeed, toolKind } from './cables';
 import type {
   Plan,
   PlanBackground,
+  PlanZone,
   PlanConnection,
   PlanIssue,
   PlanObject,
@@ -15,6 +16,8 @@ import {
   footprintOf,
   objectAt,
   pathD,
+  polygonArea,
+  polygonCentroid,
   restingZ,
   rotateAround,
   simplifyPath,
@@ -76,6 +79,13 @@ interface Props {
   onBackgroundCommit: (id: string, patch: Partial<PlanBackground>) => void;
   /** Se dispara al soltar el trazo de calibración. */
   onCalibrate: (line: CalibrationLine) => void;
+  zones: PlanZone[];
+  selectedZoneId: string | null;
+  onSelectZone: (id: string | null) => void;
+  /** Al poner el cuarto pin de una zona nueva. */
+  onCreateZone: (points: Waypoint[]) => void;
+  /** Al soltar un pin o la zona entera tras moverla. */
+  onZoneCommit: (id: string, points: Waypoint[]) => void;
   issuesByObject: Map<string, PlanIssue[]>;
   selectedConnectionId: string | null;
   onSelectConnection: (id: string | null) => void;
@@ -126,6 +136,9 @@ type DragState =
       start: number;
       patch: ModelPatch;
     }
+  /** Un pin de una zona, o la zona entera agarrada por su rótulo. */
+  | { kind: 'zone-pin'; id: string; index: number; points: Waypoint[] }
+  | { kind: 'zone-move'; id: string; startX: number; startY: number; dx: number; dy: number }
   | { kind: 'calibrate'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
   /** Cable dibujándose a mano: se van acumulando los puntos del trazo. */
@@ -158,6 +171,11 @@ export function Editor2D({
   onSelectBackground,
   onBackgroundCommit,
   onCalibrate,
+  zones,
+  selectedZoneId,
+  onSelectZone,
+  onCreateZone,
+  onZoneCommit,
   issuesByObject,
   selectedConnectionId,
   onSelectConnection,
@@ -314,7 +332,7 @@ export function Editor2D({
   function handleObjectPointerDown(e: React.PointerEvent, obj: PlanObject) {
     // La regla y la calibración se trazan POR ENCIMA de los objetos: si se
     // tragaran el clic, en un plano lleno no habría dónde empezar a medir.
-    if (tool === 'measure' || tool === 'calibrate') return;
+    if (tool === 'measure' || tool === 'calibrate' || tool === 'zone') return;
 
     e.stopPropagation();
     if (trackDown(e)) return;
@@ -368,6 +386,20 @@ export function Editor2D({
       return;
     }
 
+    // Zona: un clic por pin; al cuarto, se crea.
+    if (tool === 'zone') {
+      const p = zonePoint(e);
+      const draft = [...zoneDraft, p];
+      if (draft.length >= 4) {
+        onCreateZone(draft);
+        setZoneDraft([]);
+        setZoneHover(null);
+      } else {
+        setZoneDraft(draft);
+      }
+      return;
+    }
+
     // Regla: mide una distancia cualquiera sobre el plano.
     if (tool === 'measure') {
       const p = toWorld(e.clientX, e.clientY);
@@ -383,6 +415,7 @@ export function Editor2D({
       return;
     }
     onSelectConnection(null);
+    onSelectZone(null);
     if (!e.shiftKey) clearSelection();
     if (bgEdit) {
       onSelectBackground(null);
@@ -420,7 +453,21 @@ export function Editor2D({
       return;
     }
 
+    if (tool === 'zone' && zoneDraft.length) setZoneHover(zonePoint(e));
+
     if (!drag) return;
+
+    if (drag.kind === 'zone-pin') {
+      const p = zonePoint(e);
+      const points = drag.points.map((q, i) => (i === drag.index ? p : q));
+      setDrag({ ...drag, points });
+      return;
+    }
+    if (drag.kind === 'zone-move') {
+      const p = toWorld(e.clientX, e.clientY);
+      setDrag({ ...drag, dx: p.x - drag.startX, dy: p.y - drag.startY });
+      return;
+    }
 
     if (drag.kind === 'cable') {
       const p = toWorld(e.clientX, e.clientY);
@@ -673,6 +720,19 @@ export function Editor2D({
       onBackgroundCommit(drag.id, drag.patch);
     }
 
+    if (drag.kind === 'zone-pin') {
+      onZoneCommit(drag.id, drag.points);
+    }
+    if (drag.kind === 'zone-move' && (drag.dx !== 0 || drag.dy !== 0)) {
+      const z = zones.find((q) => q.id === drag.id);
+      if (z) {
+        onZoneCommit(
+          z.id,
+          z.points.map((p) => ({ x: round(Number(p.x) + drag.dx, 3), y: round(Number(p.y) + drag.dy, 3) })),
+        );
+      }
+    }
+
     if (drag.kind === 'bg-resize') {
       onBackgroundCommit(drag.id, {
         width_m: round(drag.width, 3),
@@ -739,6 +799,35 @@ export function Editor2D({
     },
     [drag],
   );
+
+  // --- Zonas -----------------------------------------------------------------
+  const [zoneDraft, setZoneDraft] = useState<Waypoint[]>([]);
+  const [zoneHover, setZoneHover] = useState<Waypoint | null>(null);
+  // Al cambiar de herramienta, la zona a medio marcar se descarta.
+  const [draftTool, setDraftTool] = useState(tool);
+  if (draftTool !== tool) {
+    setDraftTool(tool);
+    if (zoneDraft.length) setZoneDraft([]);
+    if (zoneHover) setZoneHover(null);
+  }
+
+  /** Punto para un pin, con el ajuste a la rejilla si toca (Mayús lo invierte). */
+  function zonePoint(e: React.PointerEvent): Waypoint {
+    const p = toWorld(e.clientX, e.clientY);
+    return snap !== e.shiftKey
+      ? { x: snapTo(p.x, grid), y: snapTo(p.y, grid) }
+      : { x: round(p.x, 3), y: round(p.y, 3) };
+  }
+
+  /** Vértices de una zona, con el arrastre en curso aplicado. */
+  function liveZonePoints(z: PlanZone): Waypoint[] {
+    if (drag?.kind === 'zone-pin' && drag.id === z.id) return drag.points;
+    const pts = (z.points ?? []).map((p) => ({ x: Number(p.x), y: Number(p.y) }));
+    if (drag?.kind === 'zone-move' && drag.id === z.id) {
+      return pts.map((p) => ({ x: p.x + drag.dx, y: p.y + drag.dy }));
+    }
+    return pts;
+  }
 
   /** La capa con el ajuste del modelo que se está arrastrando, si es ella. */
   const liveModelBackground = (b: PlanBackground): PlanBackground =>
@@ -988,6 +1077,114 @@ export function Editor2D({
               >
                 {fmtNum(Number(plan.depth_m), 2)} m
               </text>
+            </g>
+          ) : null}
+
+          {/* Zonas marcadas: velo de color, borde discontinuo y rótulo */}
+          {zones.map((z) => {
+            const points = liveZonePoints(z);
+            if (points.length < 3) return null;
+            const c = polygonCentroid(points);
+            const isSel = z.id === selectedZoneId;
+            const label = `${z.number} - ${z.name || 'Zona'}`;
+            const fs = 12 / zoom;
+            const chipW = (label.length * 6.6 + 14) / zoom;
+            const chipH = 19 / zoom;
+            return (
+              <g key={z.id}>
+                <polygon
+                  points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill={z.color}
+                  fillOpacity={isSel ? 0.2 : 0.12}
+                  stroke={z.color}
+                  strokeWidth={strokePx * (isSel ? 2 : 1.4)}
+                  strokeDasharray={`${strokePx * 7} ${strokePx * 4}`}
+                  pointerEvents="none"
+                />
+                <g
+                  className={isSel ? 'cursor-move' : 'cursor-pointer'}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0 || tool !== 'select') return;
+                    e.stopPropagation();
+                    onSelectZone(z.id);
+                    clearSelection();
+                    onSelectConnection(null);
+                    const p = toWorld(e.clientX, e.clientY);
+                    setDrag({ kind: 'zone-move', id: z.id, startX: p.x, startY: p.y, dx: 0, dy: 0 });
+                    (e.target as Element).setPointerCapture?.(e.pointerId);
+                  }}
+                >
+                  <rect
+                    x={c.x - chipW / 2}
+                    y={c.y - chipH / 2}
+                    width={chipW}
+                    height={chipH}
+                    rx={4 / zoom}
+                    fill="var(--ef-canvas)"
+                    fillOpacity={0.85}
+                    stroke={z.color}
+                    strokeWidth={strokePx * (isSel ? 2 : 1)}
+                  />
+                  <text
+                    x={c.x}
+                    y={c.y}
+                    fontSize={fs}
+                    fontWeight={600}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="var(--ef-text)"
+                  >
+                    {label}
+                  </text>
+                </g>
+                {isSel
+                  ? points.map((p, i) => (
+                      <circle
+                        key={i}
+                        cx={p.x}
+                        cy={p.y}
+                        r={6 / zoom}
+                        fill={z.color}
+                        stroke="var(--ef-canvas)"
+                        strokeWidth={strokePx * 1.5}
+                        className="cursor-crosshair"
+                        onPointerDown={(e) => {
+                          if (e.button !== 0) return;
+                          e.stopPropagation();
+                          setDrag({ kind: 'zone-pin', id: z.id, index: i, points: z.points.map((q) => ({ x: Number(q.x), y: Number(q.y) })) });
+                          (e.target as Element).setPointerCapture?.(e.pointerId);
+                        }}
+                      />
+                    ))
+                  : null}
+                {isSel ? (
+                  <g transform={`translate(${c.x},${c.y + chipH})`}>
+                    <MeasureChip zoom={zoom} rotation={0} text={`${fmtNum(polygonArea(points), 1)} m²`} />
+                  </g>
+                ) : null}
+              </g>
+            );
+          })}
+
+          {/* Zona a medio marcar: los pines puestos y el que sigue al ratón */}
+          {tool === 'zone' && zoneDraft.length ? (
+            <g pointerEvents="none">
+              <polyline
+                points={[...zoneDraft, ...(zoneHover ? [zoneHover] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
+                fill="var(--ef-cyan)"
+                fillOpacity={0.08}
+                stroke="var(--ef-cyan)"
+                strokeWidth={strokePx * 1.8}
+                strokeDasharray={`${strokePx * 6} ${strokePx * 4}`}
+              />
+              {zoneDraft.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={6 / zoom} fill="var(--ef-cyan)" stroke="var(--ef-canvas)" strokeWidth={strokePx * 1.5} />
+                  <text x={p.x} y={p.y} fontSize={8 / zoom} textAnchor="middle" dominantBaseline="central" fill="var(--ef-canvas)" fontWeight={700}>
+                    {i + 1}
+                  </text>
+                </g>
+              ))}
             </g>
           ) : null}
 
@@ -1718,7 +1915,7 @@ function ModelPlan({
     return (
       <g transform={transform} pointerEvents="none">
         <path d={fp.roofs} fill="var(--ef-cyan)" fillOpacity={0.12} />
-        <path d={fp.pillars} fill="var(--ef-ink)" fillOpacity={0.9} />
+        <path d={fp.pillars} fill="var(--ef-text)" fillOpacity={0.9} />
       </g>
     );
   }
@@ -1760,7 +1957,7 @@ function ModelPlan({
       />
       <g transform={transform} className="cursor-move" onPointerDown={(e) => onStart('move', e, fp)}>
         <path d={fp.roofs} fill="var(--ef-cyan)" fillOpacity={0.35} />
-        <path d={fp.pillars} fill="var(--ef-ink)" />
+        <path d={fp.pillars} fill="var(--ef-text)" />
       </g>
 
       <line

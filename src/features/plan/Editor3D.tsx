@@ -9,8 +9,9 @@ import type {
   PlanConnection,
   PlanIssue,
   PlanObject,
+  PlanZone,
 } from "@/lib/types";
-import { cablePath, footprintOf } from "@/lib/geometry";
+import { cablePath, footprintOf, polygonCentroid } from "@/lib/geometry";
 import { round, snap as snapTo } from "@/lib/utils";
 import { usePlanStore } from "./planStore";
 import type { CommitUpdate } from "./Editor2D";
@@ -43,6 +44,8 @@ interface Props {
   backgroundModelUrls: Map<string, string>;
   /** Textura de cada objeto del plano, indexada por su id. */
   textures: Map<string, TextureSpec>;
+  /** Zonas marcadas en el plano: se pintan en el suelo con su rótulo. */
+  zones: PlanZone[];
   /** Modelo 3D (.glb) de cada objeto que lo tenga, indexado por su id. */
   models: Map<string, { url: string; floorOffset: number }>;
   issuesByObject: Map<string, PlanIssue[]>;
@@ -99,6 +102,7 @@ function Scene({
   backgroundModelUrls,
   textures,
   models,
+  zones,
   issuesByObject,
   onCommit,
   onGlReady,
@@ -433,6 +437,44 @@ function Scene({
             layer={i}
           />
         ))}
+
+      {/* Zonas marcadas, pintadas en el suelo */}
+      {zones.map((z) => {
+        const pts = (z.points ?? []).map((p) => ({ x: Number(p.x), y: Number(p.y) }));
+        if (pts.length < 3) return null;
+        // La forma se dibuja en el plano XY y se tumba: la Y del plano pasa a
+        // ser la Z de three.js.
+        const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.y)));
+        const c = polygonCentroid(pts);
+        return (
+          <group key={z.id}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} renderOrder={1}>
+              <shapeGeometry args={[shape]} />
+              <meshBasicMaterial
+                color={z.color}
+                transparent
+                opacity={0.22}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+                polygonOffset
+                polygonOffsetFactor={-6}
+                polygonOffsetUnits={-6}
+              />
+            </mesh>
+            <Html position={[c.x, 0.05, c.y]} center occlude={false} style={{ pointerEvents: "none" }}>
+              <span
+                className="whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-semibold text-ink"
+                style={{
+                  borderColor: z.color,
+                  background: "color-mix(in oklab, var(--ef-canvas) 82%, transparent)",
+                }}
+              >
+                {z.number} - {z.name || "Zona"}
+              </span>
+            </Html>
+          </group>
+        );
+      })}
 
       {/* Lo que ya hay en el recinto (pérgolas, cubiertas, pilares), encajado
           sobre su imagen. Se oculta con «Recinto 3D» para ver lo de debajo. */}

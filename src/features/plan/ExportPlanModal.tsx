@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FileCode2, FileDown, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Checkbox, Field, Modal, Segmented, Select } from '@/components/ui';
-import type { EventRow, Plan, PlanBackground, PlanConnection, PlanObject } from '@/lib/types';
+import type { EventRow, Plan, PlanBackground, PlanConnection, PlanObject, PlanZone } from '@/lib/types';
 import { downloadBlob, slugify } from '@/lib/utils';
 import {
   buildDrawing,
@@ -31,6 +31,7 @@ export function ExportPlanModal({
   backgrounds,
   backgroundUrls,
   backgroundModelUrls,
+  zones,
   author,
 }: {
   open: boolean;
@@ -42,6 +43,7 @@ export function ExportPlanModal({
   backgrounds: PlanBackground[];
   backgroundUrls: Map<string, string>;
   backgroundModelUrls: Map<string, string>;
+  zones: PlanZone[];
   author: string;
 }) {
   const [paper, setPaper] = useState<Paper>('A3');
@@ -49,6 +51,8 @@ export function ExportPlanModal({
   const [photo, setPhoto] = useState(false);
   const [cables, setCables] = useState(true);
   const [venue, setVenue] = useState(true);
+  const [showZones, setShowZones] = useState(true);
+  const [feeds, setFeeds] = useState(true);
 
   const visible = useMemo(() => backgrounds.filter((b) => b.visible), [backgrounds]);
 
@@ -115,12 +119,13 @@ export function ExportPlanModal({
               connections,
               venues,
               photos: photo ? photos : [],
+              zones,
               author,
             },
-            { paper, scale, photo, cables, venue } satisfies ExportOptions,
+            { paper, scale, photo, cables, venue, zones: showZones, feeds } satisfies ExportOptions,
           )
         : null,
-    [open, plan, event, objects, connections, venues, photos, author, paper, scale, photo, cables, venue],
+    [open, plan, event, objects, connections, venues, photos, zones, author, paper, scale, photo, cables, venue, showZones, feeds],
   );
   const svg = useMemo(() => (drawing ? toSvg(drawing) : ''), [drawing]);
   const sheet = useMemo(() => (drawing ? layoutSheet(drawing) : null), [drawing]);
@@ -225,6 +230,18 @@ export function ExportPlanModal({
             </Select>
           </Field>
           <div className="space-y-2.5">
+            <Checkbox
+              label={`Zonas (${zones.length})`}
+              checked={showZones}
+              disabled={zones.length === 0}
+              onChange={(e) => setShowZones(e.target.checked)}
+            />
+            <Checkbox
+              label="Puntos de luz y de red (E1, R1…)"
+              checked={feeds}
+              disabled={!objects.some((o) => o.kind === 'power_source' || o.kind === 'network_source')}
+              onChange={(e) => setFeeds(e.target.checked)}
+            />
             <Checkbox label="Cableado" checked={cables} onChange={(e) => setCables(e.target.checked)} />
             <Checkbox
               label="Recinto 3D (pilares y cubiertas)"
@@ -235,7 +252,8 @@ export function ExportPlanModal({
             <Checkbox label="Foto de fondo, en gris" checked={photo} onChange={(e) => setPhoto(e.target.checked)} />
           </div>
           <p className="text-[11.5px] leading-relaxed text-dim">
-            Los objetos iguales comparten número y la leyenda dice cuántos hay. El DXF va en metros
+            Los objetos iguales comparten número y la leyenda dice cuántos hay. Las zonas salen
+            rotuladas («1 - Zona Fripozo») y los puntos de luz y de red, con su símbolo y numerados. El DXF va en metros
             reales y por capas (recinto, objetos, marcas, cada tipo de cable, pilares y cubiertas).
           </p>
         </div>

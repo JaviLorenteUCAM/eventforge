@@ -25,6 +25,7 @@ export const qk = {
   planObjects: (planId: string) => ['plan-objects', planId] as const,
   planConnections: (planId: string) => ['plan-connections', planId] as const,
   planBackgrounds: (planId: string) => ['plan-backgrounds', planId] as const,
+  planZones: (planId: string) => ['plan-zones', planId] as const,
 
   scenarios: ['scenarios'] as const,
   scenarioPreview: (id: string) => ['scenarios', id, 'preview'] as const,

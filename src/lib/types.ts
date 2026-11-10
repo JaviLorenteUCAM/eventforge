@@ -622,6 +622,22 @@ export interface PlanBackground {
   updated_at: string;
 }
 
+/**
+ * Zona marcada en el plano con sus pines: número, nombre y color. Sale
+ * rotulada en el plano exportado como «1 - Zona Fripozo».
+ */
+export interface PlanZone {
+  id: string;
+  plan_id: string;
+  number: number;
+  name: string;
+  color: string;
+  /** Vértices en metros del plano: cuatro al crearla. */
+  points: Waypoint[];
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Escenarios reutilizables ----------------------------------------------
 export interface Scenario {
   id: string;
