@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import {
+  Minus,
+  Plus,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -25,6 +27,7 @@ import { Button, ConfirmDialog, Field, NumberInput } from '@/components/ui';
 import { BUCKETS, uploadFile, uploadModel } from '@/lib/storage';
 import type { Plan, PlanBackground } from '@/lib/types';
 import { cn, downloadBlob, fmtNum, round } from '@/lib/utils';
+import { aroundCentre, placementOf, useFootprint } from './modelFootprint';
 import { usePlanStore } from './planStore';
 
 /**
@@ -40,6 +43,7 @@ export function BackgroundPanel({
   plan,
   backgrounds,
   urls,
+  modelUrls,
   selectedId,
   onSelect,
   onChange,
@@ -49,6 +53,8 @@ export function BackgroundPanel({
   plan: Plan;
   backgrounds: PlanBackground[];
   urls: Map<string, string>;
+  /** URL firmada del modelo del recinto de cada capa que lo tenga. */
+  modelUrls?: Map<string, string>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onChange: (id: string, patch: Partial<PlanBackground>) => void;
@@ -440,7 +446,9 @@ export function BackgroundPanel({
                               {b.model_path.split('/').pop()}
                             </p>
                           ) : null}
-                          {b.model_path ? <ModelAdjust background={b} onChange={onChange} /> : null}
+                          {b.model_path ? (
+                            <ModelAdjust background={b} url={modelUrls?.get(b.id)} onChange={onChange} />
+                          ) : null}
                         </div>
 
                         <div className="flex items-center gap-1">
@@ -521,14 +529,30 @@ export function BackgroundPanel({
  */
 function ModelAdjust({
   background: b,
+  url,
   onChange,
 }: {
   background: PlanBackground;
+  url?: string;
   onChange: (id: string, patch: Partial<PlanBackground>) => void;
 }) {
   const [coarse, setCoarse] = useState(false);
   const step = coarse ? 1 : 0.1;
   const turn = coarse ? 5 : 0.5;
+  const grow = coarse ? 0.05 : 0.005;
+  const fp = useFootprint(url);
+
+  /**
+   * Giro y escala alrededor del centro del propio modelo, corrigiendo el
+   * desplazamiento: alrededor del centro de la foto se iba lejos.
+   */
+  const transform = (rotation: number, nextScale: number) =>
+    onChange(
+      b.id,
+      fp
+        ? aroundCentre(placementOf(b), fp, rotation, nextScale)
+        : { model_rotation: round(rotation, 2), model_scale: round(nextScale, 3) },
+    );
 
   const dx = Number(b.model_offset_x ?? 0);
   const dy = Number(b.model_offset_y ?? 0);
@@ -540,7 +564,8 @@ function ModelAdjust({
       model_offset_x: round(dx + mx * step, 3),
       model_offset_y: round(dy + my * step, 3),
     });
-  const rotate = (dir: number) => onChange(b.id, { model_rotation: round(rot + dir * turn, 2) });
+  const rotate = (dir: number) => transform(rot + dir * turn, scale);
+  const resize = (dir: number) => transform(rot, Math.min(20, Math.max(0.05, scale * (1 + dir * grow))));
 
   const pad = 'grid size-7 place-items-center rounded-md border border-line bg-surface-2 text-muted transition-colors hover:text-ink';
 
@@ -596,17 +621,23 @@ function ModelAdjust({
           </button>
           <span />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-2 gap-1">
           <button className={pad} onClick={() => rotate(-1)} aria-label="Girar a la izquierda">
             <RotateCcw className="size-3.5" />
           </button>
           <button className={pad} onClick={() => rotate(1)} aria-label="Girar a la derecha">
             <RotateCw className="size-3.5" />
           </button>
+          <button className={pad} onClick={() => resize(-1)} aria-label="Hacerlo más pequeño">
+            <Minus className="size-3.5" />
+          </button>
+          <button className={pad} onClick={() => resize(1)} aria-label="Hacerlo más grande">
+            <Plus className="size-3.5" />
+          </button>
         </div>
         <p className="min-w-0 flex-1 text-[10.5px] leading-relaxed text-dim">
-          Míralo en 3D desde arriba mientras lo mueves: las cubiertas tienen que caer sobre las de
-          la foto. La mira lo devuelve a su sitio.
+          Más cómodo en el 2D: activa «Ajustar en el plano» y arrástralo, gíralo con el tirador
+          redondo y escálalo con el cuadrado. La mira lo devuelve a su sitio.
         </p>
       </div>
 
@@ -632,7 +663,7 @@ function ModelAdjust({
         <Field label="Giro">
           <NumberInput
             value={rot}
-            onChange={(v) => onChange(b.id, { model_rotation: v })}
+            onChange={(v) => transform(v, scale)}
             unit="°"
             step={0.5}
             min={-360}
@@ -642,7 +673,7 @@ function ModelAdjust({
         <Field label="Escala">
           <NumberInput
             value={round(scale * 100, 1)}
-            onChange={(v) => onChange(b.id, { model_scale: Math.min(20, Math.max(0.05, v / 100)) })}
+            onChange={(v) => transform(rot, Math.min(20, Math.max(0.05, v / 100)))}
             unit="%"
             step={0.5}
             min={5}

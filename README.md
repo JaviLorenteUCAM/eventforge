@@ -772,11 +772,20 @@ imagen de fondo** a la que corresponde (en la capa, *Modelo 3D del recinto → S
   se coloca debajo no «se apoya» en el tejado.
 - El botón **Recinto 3D** de la barra lo oculta para ver lo que hay debajo de las cubiertas.
 - Viaja con la imagen al duplicar el evento y al guardar o cargar un escenario.
+- **Su planta se ve en el 2D**: las cubiertas en un velo y los pilares en oscuro, para colocar
+  el material sabiendo dónde caen los pilares.
 - **Colocarlo sobre la foto**: si la imagen del plano no es exactamente la captura para la que
-  se hizo el modelo, se recoloca desde la capa con flechas (en los ejes del plano), giro a un
-  lado y a otro, y campos de desplazamiento, giro y escala. *Fino* mueve 10 cm y 0,5°; *Grueso*,
-  1 m y 5°; la mira lo devuelve a su sitio. Giro y escala van alrededor del centro de la imagen,
-  y el ajuste viaja con la capa.
+  se hizo el modelo, se recoloca **en el 2D**, que es una vista cenital exacta (en el 3D la
+  perspectiva desplaza las cubiertas respecto al suelo y no hay forma de cuadrarlo). Con
+  *Ajustar en el plano* y la capa seleccionada, la planta del modelo se arrastra para moverla, el
+  tirador redondo la gira (Mayús: de 5 en 5°) y el cuadrado la escala. Desde el panel también:
+  flechas, giro, − / + y campos exactos (*Fino*: 10 cm, 0,5° y 0,5 %; *Grueso*: 1 m, 5° y 5 %);
+  la mira lo devuelve a su sitio. Giro y escala van **alrededor del centro del propio modelo**, y
+  el ajuste viaja con la capa.
+- **Escala igual en todos los ejes.** Si la capa es la misma captura para la que se hizo el
+  modelo, se encaja con su calibración; si es otra imagen, va a su tamaño real en metros. Antes
+  se estiraban el ancho y el alto por separado y, con una foto de otra proporción, los pabellones
+  cuadrados salían como rombos.
 
 El `.glb` va en el **marco de la imagen**: origen en su esquina superior izquierda, X hacia la
 derecha, Z hacia abajo de la foto, en metros. Si en los *extras* de la escena trae

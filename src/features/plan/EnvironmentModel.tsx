@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
+import { frameScale } from './modelFootprint';
 import { loadModel } from './modelLoader';
 
 /**
@@ -13,13 +14,16 @@ import { loadModel } from './modelLoader';
  * El modelo está en el MARCO DE LA IMAGEN: origen en su esquina superior
  * izquierda, X hacia la derecha y Z hacia abajo de la foto, en metros. En los
  * «extras» de la escena trae las medidas de esa imagen
- * (`eventforge.imageWidthM` / `imageHeightM`), así que aquí se escala para que
- * la imagen mida lo que mida su capa ya calibrada, y se gira y se coloca igual
- * que ella. Si el modelo no trae esas medidas se usa tal cual, en metros.
+ * (`eventforge.imageWidthM` / `imageHeightM`): si la capa es esa misma
+ * captura, se escala para encajar con su calibración; si es otra imagen, va a
+ * su tamaño real. Siempre con la MISMA escala en los tres ejes (frameScale),
+ * y girado y colocado igual que la imagen. Sin esas medidas, en metros.
  *
  * Encima va el AJUSTE de la capa (desplazamiento, giro y escala), para cuando
  * la foto del plano no es exactamente la captura para la que se hizo el
- * modelo. Giro y escala se aplican alrededor del centro de la imagen.
+ * modelo. Aquí giro y escala van alrededor del centro de la imagen, pero el
+ * panel y el 2D corrigen el desplazamiento para que, en la práctica, giren y
+ * escalen alrededor del centro del propio modelo (aroundCentre).
  *
  * No lleva manejadores de eventos: los clics lo atraviesan hasta el suelo y
  * los objetos, de modo que se puede seguir colocando y arrastrando debajo.
@@ -78,13 +82,17 @@ export function EnvironmentModel({
 
   if (!root || !source) return null;
 
-  const frame = (source.userData as { eventforge?: { imageWidthM?: number; imageHeightM?: number } })
+  const extras = (source.userData as { eventforge?: { imageWidthM?: number; imageHeightM?: number } })
     .eventforge;
-  const sx = frame?.imageWidthM ? width / frame.imageWidthM : 1;
-  const sz = frame?.imageHeightM ? height / frame.imageHeightM : 1;
-  // La altura no viene en la imagen: escala con la media de los otros dos,
-  // que es la corrección que la calibración le ha hecho a los supuestos.
-  const sy = (sx + sz) / 2;
+  // La misma escala en los tres ejes: escalar ancho y alto por separado
+  // convertía los pabellones cuadrados en rombos (ver frameScale).
+  const s = frameScale(
+    width,
+    height,
+    extras?.imageWidthM && extras.imageHeightM
+      ? { width: extras.imageWidthM, height: extras.imageHeightM }
+      : null,
+  );
 
   return (
     // Mismo giro que la imagen (alrededor de su centro) y el modelo desde su
@@ -94,7 +102,7 @@ export function EnvironmentModel({
       rotation={[0, (-(rotation + extraRotation) * Math.PI) / 180, 0]}
       scale={scale > 0 ? scale : 1}
     >
-      <group position={[-width / 2, 0, -height / 2]} scale={[sx, sy, sz]}>
+      <group position={[-width / 2, 0, -height / 2]} scale={s}>
         <primitive object={root} />
       </group>
     </group>

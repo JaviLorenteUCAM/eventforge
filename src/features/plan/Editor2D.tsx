@@ -21,6 +21,16 @@ import {
 } from '@/lib/geometry';
 import { clamp, fmtNum, round, snap as snapTo } from '@/lib/utils';
 import { usePlanStore, ZOOM_MAX, ZOOM_MIN } from './planStore';
+import {
+  aroundCentre,
+  footprintCentre,
+  modelToPlan,
+  placementOf,
+  placementTransform,
+  useFootprint,
+  type Footprint,
+  type ModelPlacement,
+} from './modelFootprint';
 
 /**
  * EDITOR 2D (vista cenital)
@@ -59,6 +69,8 @@ interface Props {
   backgrounds: PlanBackground[];
   /** Rutas de Storage ya resueltas a URL firmada. */
   backgroundUrls: Map<string, string>;
+  /** Modelo 3D del recinto de cada capa que lo tenga (para dibujar su planta). */
+  backgroundModelUrls: Map<string, string>;
   selectedBackgroundId: string | null;
   onSelectBackground: (id: string | null) => void;
   onBackgroundCommit: (id: string, patch: Partial<PlanBackground>) => void;
@@ -96,6 +108,24 @@ type DragState =
       height: number;
       ratio: number;
     }
+  /**
+   * Colocar el modelo del recinto sobre su foto: moverlo, girarlo o escalarlo.
+   * Giro y escala van alrededor del centro de su planta (`pivot`), así que no
+   * sale disparado; `patch` es lo que se guardará al soltar.
+   */
+  | {
+      kind: 'model';
+      id: string;
+      mode: 'move' | 'rotate' | 'scale';
+      base: ModelPlacement;
+      fp: Footprint;
+      pivot: Waypoint;
+      startX: number;
+      startY: number;
+      /** Ángulo (giro) o distancia al centro (escala) al empezar. */
+      start: number;
+      patch: ModelPatch;
+    }
   | { kind: 'calibrate'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
   /** Cable dibujándose a mano: se van acumulando los puntos del trazo. */
@@ -123,6 +153,7 @@ export function Editor2D({
   connections,
   backgrounds,
   backgroundUrls,
+  backgroundModelUrls,
   selectedBackgroundId,
   onSelectBackground,
   onBackgroundCommit,
@@ -155,6 +186,7 @@ export function Editor2D({
     showSignal,
     showUsb,
     showMeasures,
+    showEnvironment,
     snap,
     bgEdit,
   } = usePlanStore();
@@ -405,6 +437,30 @@ export function Editor2D({
       return;
     }
 
+    if (drag.kind === 'model') {
+      const p = toWorld(e.clientX, e.clientY);
+      const { base, fp, pivot } = drag;
+      let patch: ModelPatch;
+      if (drag.mode === 'move') {
+        patch = {
+          model_offset_x: round(base.offsetX + p.x - drag.startX, 3),
+          model_offset_y: round(base.offsetY + p.y - drag.startY, 3),
+          model_rotation: base.extraRotation,
+          model_scale: base.scale,
+        };
+      } else if (drag.mode === 'rotate') {
+        // Libre, para afinar; con Mayús, a saltos de 5°.
+        let delta = (Math.atan2(p.y - pivot.y, p.x - pivot.x) * 180) / Math.PI - drag.start;
+        if (e.shiftKey) delta = Math.round(delta / 5) * 5;
+        patch = aroundCentre(base, fp, base.extraRotation + delta, base.scale);
+      } else {
+        const dist = Math.max(0.01, Math.hypot(p.x - pivot.x, p.y - pivot.y));
+        patch = aroundCentre(base, fp, base.extraRotation, clamp((base.scale * dist) / drag.start, 0.05, 20));
+      }
+      setDrag({ ...drag, patch });
+      return;
+    }
+
     if (drag.kind === 'pan') {
       setView({
         panX: drag.panX + (e.clientX - drag.startX),
@@ -613,6 +669,10 @@ export function Editor2D({
       }
     }
 
+    if (drag.kind === 'model') {
+      onBackgroundCommit(drag.id, drag.patch);
+    }
+
     if (drag.kind === 'bg-resize') {
       onBackgroundCommit(drag.id, {
         width_m: round(drag.width, 3),
@@ -679,6 +739,57 @@ export function Editor2D({
     },
     [drag],
   );
+
+  /** La capa con el ajuste del modelo que se está arrastrando, si es ella. */
+  const liveModelBackground = (b: PlanBackground): PlanBackground =>
+    drag?.kind === 'model' && drag.id === b.id ? { ...b, ...drag.patch } : b;
+
+  /** Capa seleccionada cuyo modelo se puede colocar ahora. */
+  const editableModel =
+    backgrounds.find(
+      (b) =>
+        b.id === selectedBackgroundId &&
+        b.visible &&
+        !b.locked &&
+        backgroundModelUrls.has(b.id),
+    ) ?? null;
+
+  function startModelDrag(
+    b: PlanBackground,
+    mode: 'move' | 'rotate' | 'scale',
+    e: React.PointerEvent,
+    fp: Footprint,
+  ) {
+    e.stopPropagation();
+    const base = placementOf(b);
+    const c = footprintCentre(fp);
+    const pivot = modelToPlan(base, fp, c.x, c.z);
+    const p = toWorld(e.clientX, e.clientY);
+    const start =
+      mode === 'rotate'
+        ? (Math.atan2(p.y - pivot.y, p.x - pivot.x) * 180) / Math.PI
+        : mode === 'scale'
+          ? Math.max(0.01, Math.hypot(p.x - pivot.x, p.y - pivot.y))
+          : 0;
+    setDrag({
+      kind: 'model',
+      id: b.id,
+      mode,
+      base,
+      fp,
+      pivot,
+      startX: p.x,
+      startY: p.y,
+      start,
+      patch: {
+        model_offset_x: base.offsetX,
+        model_offset_y: base.offsetY,
+        model_rotation: base.extraRotation,
+        model_scale: base.scale,
+      },
+    });
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  }
 
   const selectedObjects = objects.filter((o) => selection.includes(o.id)).map(liveObject);
   const single = selectedObjects.length === 1 ? selectedObjects[0] : null;
@@ -818,6 +929,21 @@ export function Editor2D({
                   />
                 );
               })}
+
+            {/* Planta del recinto 3D (cubiertas y pilares), para colocar el
+                material sabiendo dónde caen los pilares. */}
+            {showEnvironment
+              ? backgrounds
+                  .filter((b) => b.visible && backgroundModelUrls.has(b.id))
+                  .map((b) => (
+                    <ModelPlan
+                      key={`planta-${b.id}`}
+                      background={liveModelBackground(b)}
+                      url={backgroundModelUrls.get(b.id)!}
+                      zoom={zoom}
+                    />
+                  ))
+              : null}
           </g>
 
           {/* Recinto */}
@@ -1225,6 +1351,17 @@ export function Editor2D({
                 })
             : null}
 
+          {/* Colocar el modelo del recinto: arrastrar, girar y escalar */}
+          {bgEdit && editableModel ? (
+            <ModelPlan
+              background={liveModelBackground(editableModel)}
+              url={backgroundModelUrls.get(editableModel.id)!}
+              zoom={zoom}
+              dragging={drag?.kind === 'model' ? drag.mode : null}
+              onStart={(mode, e, fp) => startModelDrag(editableModel, mode, e, fp)}
+            />
+          ) : null}
+
           {/* Trazo de calibración */}
           {drag?.kind === 'calibrate' ? (
             <g pointerEvents="none">
@@ -1541,5 +1678,133 @@ function ZoomButton({
     >
       {children}
     </button>
+  );
+}
+
+type ModelPatch = Pick<
+  PlanBackground,
+  'model_offset_x' | 'model_offset_y' | 'model_rotation' | 'model_scale'
+>;
+
+/**
+ * PLANTA DEL MODELO DEL RECINTO EN EL 2D
+ *
+ * Sin `onStart` es solo referencia: las cubiertas en un velo y los pilares en
+ * oscuro, sin capturar el ratón. Con `onStart` (modo «Ajustar en el plano»)
+ * se arrastra entera para moverla, el tirador de arriba la gira y el de la
+ * esquina la escala, todo alrededor del centro de su planta.
+ */
+function ModelPlan({
+  background,
+  url,
+  zoom,
+  dragging = null,
+  onStart,
+}: {
+  background: PlanBackground;
+  url: string;
+  zoom: number;
+  dragging?: 'move' | 'rotate' | 'scale' | null;
+  onStart?: (mode: 'move' | 'rotate' | 'scale', e: React.PointerEvent, fp: Footprint) => void;
+}) {
+  const fp = useFootprint(url);
+  if (!fp) return null;
+
+  const p = placementOf(background);
+  const transform = placementTransform(p, fp);
+  const px = 1 / zoom;
+
+  if (!onStart) {
+    return (
+      <g transform={transform} pointerEvents="none">
+        <path d={fp.roofs} fill="var(--ef-cyan)" fillOpacity={0.12} />
+        <path d={fp.pillars} fill="var(--ef-ink)" fillOpacity={0.9} />
+      </g>
+    );
+  }
+
+  const c = footprintCentre(fp);
+  const pivot = modelToPlan(p, fp, c.x, c.z);
+  const corners = [
+    [fp.minX, fp.minZ],
+    [fp.maxX, fp.minZ],
+    [fp.maxX, fp.maxZ],
+    [fp.minX, fp.maxZ],
+  ].map(([x, z]) => modelToPlan(p, fp, x, z));
+  const top = modelToPlan(p, fp, c.x, fp.minZ);
+  const len = Math.hypot(top.x - pivot.x, top.y - pivot.y) || 1;
+  const knob = {
+    x: top.x + ((top.x - pivot.x) / len) * (30 / zoom),
+    y: top.y + ((top.y - pivot.y) / len) * (30 / zoom),
+  };
+  const scaleKnob = corners[2];
+  const label =
+    dragging === 'rotate'
+      ? `${fmtNum(p.extraRotation, 1)}°`
+      : dragging === 'scale'
+        ? `${fmtNum(p.scale * 100, 1)} %`
+        : null;
+
+  return (
+    <g>
+      {/* Toda la caja agarra para mover: más fácil que atinar a una cubierta. */}
+      <polygon
+        points={corners.map((q) => `${q.x},${q.y}`).join(' ')}
+        fill="var(--ef-cyan)"
+        fillOpacity={0.05}
+        stroke="var(--ef-cyan)"
+        strokeWidth={px * 1.5}
+        strokeDasharray={`${px * 6} ${px * 4}`}
+        className="cursor-move"
+        onPointerDown={(e) => onStart('move', e, fp)}
+      />
+      <g transform={transform} className="cursor-move" onPointerDown={(e) => onStart('move', e, fp)}>
+        <path d={fp.roofs} fill="var(--ef-cyan)" fillOpacity={0.35} />
+        <path d={fp.pillars} fill="var(--ef-ink)" />
+      </g>
+
+      <line
+        x1={top.x}
+        y1={top.y}
+        x2={knob.x}
+        y2={knob.y}
+        stroke="var(--ef-cyan)"
+        strokeWidth={px * 1.5}
+        pointerEvents="none"
+      />
+      <circle
+        cx={knob.x}
+        cy={knob.y}
+        r={7 / zoom}
+        fill="var(--ef-cyan)"
+        stroke="var(--ef-canvas)"
+        strokeWidth={px * 1.5}
+        className="cursor-grab"
+        onPointerDown={(e) => onStart('rotate', e, fp)}
+      >
+        <title>Girar (Mayús: de 5 en 5°)</title>
+      </circle>
+      <rect
+        x={scaleKnob.x - 6 / zoom}
+        y={scaleKnob.y - 6 / zoom}
+        width={12 / zoom}
+        height={12 / zoom}
+        rx={2 / zoom}
+        fill="var(--ef-cyan)"
+        stroke="var(--ef-canvas)"
+        strokeWidth={px * 1.5}
+        className="cursor-nwse-resize"
+        onPointerDown={(e) => onStart('scale', e, fp)}
+      >
+        <title>Escalar</title>
+      </rect>
+      <circle cx={pivot.x} cy={pivot.y} r={3 / zoom} fill="var(--ef-cyan)" pointerEvents="none" />
+
+      {label ? (
+        <g transform={`translate(${knob.x},${knob.y - 18 / zoom})`}>
+          <MeasureChip zoom={zoom} rotation={0} accent text={label} />
+        </g>
+      ) : null}
+    </g>
   );
 }

@@ -1316,6 +1316,7 @@ export function PlanPage() {
               connections={connectionList}
               backgrounds={backgroundList}
               backgroundUrls={backgroundUrls}
+              backgroundModelUrls={backgroundModelUrls}
               selectedBackgroundId={selectedBackgroundId}
               onSelectBackground={(id) => {
                 setSelectedBackgroundId(id);
@@ -1403,6 +1404,7 @@ export function PlanPage() {
                   plan={plan}
                   backgrounds={backgroundList}
                   urls={backgroundUrls}
+                  modelUrls={backgroundModelUrls}
                   selectedId={selectedBackgroundId}
                   onSelect={setSelectedBackgroundId}
                   onChange={handleBackgroundChange}
@@ -1529,6 +1531,7 @@ export function PlanPage() {
               plan={plan}
               backgrounds={backgroundList}
               urls={backgroundUrls}
+              modelUrls={backgroundModelUrls}
               selectedId={selectedBackgroundId}
               onSelect={setSelectedBackgroundId}
               onChange={handleBackgroundChange}
