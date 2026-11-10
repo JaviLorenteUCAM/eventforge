@@ -178,6 +178,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 14 | `supabase/migrations/0014_volume_mode.sql` | Modo volumen: la forma sale de las vistas de la plantilla |
 | 15 | `supabase/migrations/0015_model_floor_offset.sql` | Altura del suelo del modelo (silueta y volumen) |
 | 16 | `supabase/migrations/0016_object_models.sql` | Modelos 3D (.glb) en el material y el catálogo, y su bucket |
+| 17 | `supabase/migrations/0017_background_models.sql` | Modelo 3D del recinto, pegado a la imagen de fondo |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -585,7 +586,8 @@ eventforge/
 │       ├── 0013_usb_cabling.sql       # cableado USB, categoría periféricos
 │       ├── 0014_volume_mode.sql       # modo de textura «volumen»
 │       ├── 0015_model_floor_offset.sql # altura del suelo del modelo
-│       └── 0016_object_models.sql     # modelos 3D (.glb) y bucket models
+│       ├── 0016_object_models.sql     # modelos 3D (.glb) y bucket models
+│       └── 0017_background_models.sql # modelo 3D del recinto en la capa de fondo
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -750,6 +752,42 @@ ocultar y bloquear, y el modo *Ajustar en el plano* permite moverlas y escalarla
 
 Las capas se ven tanto en 2D (bajo la rejilla) como en **3D, proyectadas sobre el suelo**, y
 viajan con el evento cuando lo duplicas o lo guardas como escenario.
+
+Cada capa se puede **descargar** tal cual se subió y **reemplazar** por otra imagen sin perder
+la calibración: posición, tamaño, giro, opacidad y modelo 3D se quedan como estaban. Es para
+retocar la foto fuera —por ejemplo, borrar del suelo las cubiertas que ya dibuja el modelo del
+recinto— y volver a subirla. Conviene que la nueva tenga el mismo tamaño en píxeles.
+
+#### Modelo 3D del recinto
+
+Lo que ya hay en el sitio —pérgolas, cubiertas, pilares— no es un objeto del evento: no se
+mueve ni se selecciona, y no debe estorbar al colocar nada debajo. Por eso va **colgado de la
+imagen de fondo** a la que corresponde (en la capa, *Modelo 3D del recinto → Subir .glb*):
+
+- Se dibuja **solo en 3D**, encajado sobre la foto con su misma posición, escala y giro, así que
+  hereda la calibración. En el 2D no aparece y no se queda con los clics.
+- No tiene manejadores de ratón: los clics lo atraviesan hasta el suelo y los objetos, y lo que
+  se coloca debajo no «se apoya» en el tejado.
+- El botón **Recinto 3D** de la barra lo oculta para ver lo que hay debajo de las cubiertas.
+- Viaja con la imagen al duplicar el evento y al guardar o cargar un escenario.
+
+El `.glb` va en el **marco de la imagen**: origen en su esquina superior izquierda, X hacia la
+derecha, Z hacia abajo de la foto, en metros. Si en los *extras* de la escena trae
+`eventforge.imageWidthM` e `imageHeightM` (las medidas de la imagen para la que se hizo), se
+escala para que coincida con la capa calibrada; si no, se usa tal cual en metros.
+
+**Las pérgolas de la UCAM.** No hay un modelo público de esa zona (OpenStreetMap no las tiene y
+el 3D de Google no se puede extraer), así que `tools/modelos/pergolas_ucam.mjs` lo construye a
+partir de la vista aérea: escala sacada de los pasos de cebra (0,103 m/px, contrastada con las
+bandas de 4 m de la avenida), la retícula girada 48,5° y las piezas medidas una a una —7
+pabellones de cubierta piramidal con lucernario y 9 pasos cubiertos de unos 4 m de ancho—. Las
+cubiertas llevan la foto aérea proyectada. Los pilares y las alturas no se ven desde arriba y son
+**supuestos** ajustables al principio del script (alero a 3,9 m, techos planos a 3,7 m, pendiente
+de 27°, pilares en las esquinas y cada 4,5 m como mucho en los pasos).
+
+```bash
+node tools/modelos/pergolas_ucam.mjs aerea.png modelos/pergolas-ucam.glb ruta/a/ffmpeg.exe
+```
 
 ### Escenarios reutilizables
 

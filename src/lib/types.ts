@@ -604,6 +604,11 @@ export interface PlanBackground {
   z_index: number;
   visible: boolean;
   locked: boolean;
+  /**
+   * Modelo 3D del recinto (.glb, bucket `models`) que se dibuja en 3D encajado
+   * sobre esta imagen, con su misma posición, escala y giro.
+   */
+  model_path: string | null;
   created_at: string;
   updated_at: string;
 }

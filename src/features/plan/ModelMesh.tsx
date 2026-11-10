@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadModel } from './modelLoader';
 
 /**
  * MODELO 3D (.glb) DE UN OBJETO
@@ -18,24 +18,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
  *   · Mientras carga, o si el fichero no se puede leer, se ve `fallback` (la
  *     caja de siempre): un enlace caducado no deja un hueco en el plano.
  *
- * Cada .glb se descarga y se interpreta una vez; las copias del plano clonan
- * la escena y comparten geometría y texturas.
+ * Cada .glb se descarga una vez (modelLoader) y las copias del plano clonan la
+ * escena y comparten geometría y texturas.
  */
-
-const cache = new Map<string, Promise<THREE.Group>>();
-
-function loadModel(url: string): Promise<THREE.Group> {
-  // Las URL firmadas cambian de token, pero la ruta es el mismo fichero.
-  const key = url.split('?')[0];
-  let promise = cache.get(key);
-  if (!promise) {
-    promise = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene);
-    // Si falla se olvida, para volver a intentarlo con la siguiente URL.
-    promise.catch(() => cache.delete(key));
-    cache.set(key, promise);
-  }
-  return promise;
-}
 
 type GroupProps = Omit<ThreeElements['group'], 'ref' | 'children' | 'scale' | 'position'>;
 

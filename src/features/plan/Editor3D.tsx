@@ -17,6 +17,7 @@ import type { CommitUpdate } from "./Editor2D";
 import { isFeed } from "./cables";
 import { GroundImage, TexturedMesh, type TextureSpec } from "./TexturedMesh";
 import { ModelMesh } from "./ModelMesh";
+import { EnvironmentModel } from "./EnvironmentModel";
 
 /**
  * EDITOR 3D
@@ -38,6 +39,8 @@ interface Props {
   backgrounds: PlanBackground[];
   /** Rutas de Storage ya resueltas a URL firmada. */
   backgroundUrls: Map<string, string>;
+  /** Modelo 3D del recinto de cada capa de fondo que lo tenga, por su id. */
+  backgroundModelUrls: Map<string, string>;
   /** Textura de cada objeto del plano, indexada por su id. */
   textures: Map<string, TextureSpec>;
   /** Modelo 3D (.glb) de cada objeto que lo tenga, indexado por su id. */
@@ -93,6 +96,7 @@ function Scene({
   connections,
   backgrounds,
   backgroundUrls,
+  backgroundModelUrls,
   textures,
   models,
   issuesByObject,
@@ -109,6 +113,7 @@ function Scene({
   const showNetwork = usePlanStore((s) => s.showNetwork);
   const showSignal = usePlanStore((s) => s.showSignal);
   const showUsb = usePlanStore((s) => s.showUsb);
+  const showEnvironment = usePlanStore((s) => s.showEnvironment);
   const snapOn = usePlanStore((s) => s.snap);
   const tool = usePlanStore((s) => s.tool);
   const linkFrom = usePlanStore((s) => s.linkFrom);
@@ -403,6 +408,24 @@ function Scene({
             layer={i}
           />
         ))}
+
+      {/* Lo que ya hay en el recinto (pérgolas, cubiertas, pilares), encajado
+          sobre su imagen. Se oculta con «Recinto 3D» para ver lo de debajo. */}
+      {showEnvironment
+        ? backgrounds
+            .filter((b) => b.visible && backgroundModelUrls.has(b.id))
+            .map((b) => (
+              <EnvironmentModel
+                key={`modelo-${b.id}`}
+                url={backgroundModelUrls.get(b.id)!}
+                x={Number(b.x)}
+                y={Number(b.y)}
+                width={Number(b.width_m)}
+                height={Number(b.height_m)}
+                rotation={Number(b.rotation)}
+              />
+            ))
+        : null}
 
       {/* Paredes de referencia */}
       <lineSegments position={[W / 2, Number(plan.height_m) / 2, D / 2]}>

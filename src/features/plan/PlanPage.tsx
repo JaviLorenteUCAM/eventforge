@@ -24,6 +24,7 @@ import {
   MoreHorizontal,
   MonitorPlay,
   Usb,
+  Landmark,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -206,6 +207,7 @@ export function PlanPage() {
   const [backgroundUrls, setBackgroundUrls] = useState<Map<string, string>>(new Map());
   const [textureUrls, setTextureUrls] = useState<Map<string, string>>(new Map());
   const [modelUrls, setModelUrls] = useState<Map<string, string>>(new Map());
+  const [backgroundModelUrls, setBackgroundModelUrls] = useState<Map<string, string>>(new Map());
 
   const backgroundList = useMemo(() => backgrounds.data ?? [], [backgrounds.data]);
 
@@ -220,6 +222,27 @@ export function PlanPage() {
       const map = new Map<string, string>();
       for (const [id, url] of pairs) if (url) map.set(id, url);
       setBackgroundUrls(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [backgroundList]);
+
+  // Modelo 3D del recinto de cada capa que lo tenga.
+  useEffect(() => {
+    const withModel = backgroundList.filter((b) => b.model_path);
+    if (withModel.length === 0) {
+      setBackgroundModelUrls(new Map());
+      return;
+    }
+    let alive = true;
+    void Promise.all(
+      withModel.map(async (b) => [b.id, await resolveUrl(BUCKETS.models, b.model_path)] as const),
+    ).then((pairs) => {
+      if (!alive) return;
+      const map = new Map<string, string>();
+      for (const [id, url] of pairs) if (url) map.set(id, url);
+      setBackgroundModelUrls(map);
     });
     return () => {
       alive = false;
@@ -1154,6 +1177,13 @@ export function PlanPage() {
         >
           <Usb className="size-4" />
         </Toggle>
+        <Toggle
+          active={store.showEnvironment}
+          onClick={() => store.toggle('showEnvironment')}
+          label="Recinto 3D (pérgolas, cubiertas): ocúltalo para ver lo de debajo"
+        >
+          <Landmark className="size-4" />
+        </Toggle>
         </div>
 
         <div className="mx-1 h-6 w-px bg-[var(--ef-line)]" />
@@ -1313,6 +1343,7 @@ export function PlanPage() {
               connections={connectionList}
               backgrounds={backgroundList}
               backgroundUrls={backgroundUrls}
+              backgroundModelUrls={backgroundModelUrls}
               textures={textures}
               models={models}
               issuesByObject={issuesByObject}
@@ -1548,6 +1579,13 @@ export function PlanPage() {
               </Toggle>
               <Toggle active={store.showUsb} onClick={() => store.toggle('showUsb')} label="USB">
                 <Usb className="size-4" />
+              </Toggle>
+              <Toggle
+                active={store.showEnvironment}
+                onClick={() => store.toggle('showEnvironment')}
+                label="Recinto 3D"
+              >
+                <Landmark className="size-4" />
               </Toggle>
             </div>
           </div>

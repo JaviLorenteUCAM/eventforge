@@ -24,6 +24,8 @@ interface PlanEditorState {
   showNetwork: boolean;
   showSignal: boolean;
   showUsb: boolean;
+  /** Modelo 3D del recinto (pérgolas, cubiertas). Se oculta para ver debajo. */
+  showEnvironment: boolean;
   showMeasures: boolean;
   snap: boolean;
 
@@ -52,6 +54,7 @@ interface PlanEditorState {
       | 'showNetwork'
       | 'showSignal'
       | 'showUsb'
+      | 'showEnvironment'
       | 'showMeasures'
       | 'snap',
   ) => void;
@@ -86,6 +89,7 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   showNetwork: true,
   showSignal: true,
   showUsb: true,
+  showEnvironment: true,
   showMeasures: false,
   // Arranca APAGADO: con una rejilla de 0,5 m, arrastrar daba saltos de medio
   // metro y no había forma de dejar nada en un sitio concreto. Se enciende con

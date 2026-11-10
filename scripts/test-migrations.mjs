@@ -91,6 +91,7 @@ const FILES = [
   '0014_volume_mode.sql',
   '0015_model_floor_offset.sql',
   '0016_object_models.sql',
+  '0017_background_models.sql',
 ];
 let allOk = true;
 
@@ -279,8 +280,8 @@ console.log(
 console.log('\n\x1b[1mFondos de plano y escenarios\x1b[0m');
 
 await db.exec(`
-  insert into public.plan_backgrounds (plan_id, storage_path, label, opacity, x, y, width_m, height_m)
-  values ('${planId}', 'demo/patio.jpg', 'Foto aérea', 0.55, 0, 0, 18, 12)
+  insert into public.plan_backgrounds (plan_id, storage_path, label, opacity, x, y, width_m, height_m, model_path)
+  values ('${planId}', 'demo/patio.jpg', 'Foto aérea', 0.55, 0, 0, 18, 12, 'recintos/pergolas.glb')
 `);
 
 const scen = await db.query(
@@ -327,6 +328,30 @@ console.log(
     ? '  \x1b[32m✓\x1b[0m El escenario se vuelca completo y el recinto adopta sus medidas'
     : '  \x1b[31m✗\x1b[0m La carga del escenario no es correcta',
 );
+
+// El modelo 3D del recinto (0017) viaja con su imagen: escenario de ida y
+// vuelta, y duplicado del evento que lo recibe.
+{
+  const enPlano2 = await db.query(
+    `select model_path from public.plan_backgrounds where plan_id='${plan2Id}'`,
+  );
+  const dup = await db.query(
+    `select public.duplicate_event('${ev2.rows[0].id}', 'Copia con recinto', now() + interval '60 days') as id`,
+  );
+  const enCopia = await db.query(`
+    select b.model_path from public.plan_backgrounds b
+    join public.plans p on p.id = b.plan_id
+    where p.event_id = '${dup.rows[0].id}'`);
+  const ok =
+    enPlano2.rows[0]?.model_path === 'recintos/pergolas.glb' &&
+    enCopia.rows[0]?.model_path === 'recintos/pergolas.glb';
+  if (!ok) allOk = false;
+  console.log(
+    ok
+      ? '  \x1b[32m✓\x1b[0m El modelo 3D del recinto viaja con su imagen (escenario y duplicado)'
+      : `  \x1b[31m✗\x1b[0m El modelo del recinto se pierde: ${JSON.stringify([enPlano2.rows, enCopia.rows])}`,
+  );
+}
 
 // Texturas del material del almacén (modelo «almacén primero»: la ficha del
 // almacén es la que define forma, color y textura de lo que se coloca).

@@ -1,20 +1,23 @@
 import { useRef, useState } from 'react';
 import {
+  Box,
+  Download,
   Eye,
   EyeOff,
   ImagePlus,
   Lock,
   LockOpen,
   Move,
+  RefreshCw,
   Ruler,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, ConfirmDialog, Field, NumberInput } from '@/components/ui';
-import { BUCKETS, uploadFile } from '@/lib/storage';
+import { BUCKETS, uploadFile, uploadModel } from '@/lib/storage';
 import type { Plan, PlanBackground } from '@/lib/types';
-import { cn, fmtNum } from '@/lib/utils';
+import { cn, downloadBlob, fmtNum } from '@/lib/utils';
 import { usePlanStore } from './planStore';
 
 /**
@@ -46,7 +49,11 @@ export function BackgroundPanel({
   onUploaded: (path: string, naturalRatio: number) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const modelRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const [replaceBusy, setReplaceBusy] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [modelBusy, setModelBusy] = useState(false);
   const [toDelete, setToDelete] = useState<PlanBackground | null>(null);
 
   const tool = usePlanStore((s) => s.tool);
@@ -55,6 +62,66 @@ export function BackgroundPanel({
   const setBgEdit = usePlanStore((s) => s.setBgEdit);
 
   const selected = backgrounds.find((b) => b.id === selectedId) ?? null;
+
+  /**
+   * Modelo 3D del recinto de la capa seleccionada. Al cambiarlo o quitarlo no
+   * se borra el fichero: un escenario guardado o un evento duplicado siguen
+   * apuntando a él.
+   */
+  async function handleModel(file: File) {
+    if (!selected) return;
+    setModelBusy(true);
+    try {
+      const path = await uploadModel('recintos', file);
+      onChange(selected.id, { model_path: path });
+      toast.success('Modelo del recinto cargado: se ve en la vista 3D');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se ha podido subir el modelo');
+    } finally {
+      setModelBusy(false);
+      if (modelRef.current) modelRef.current.value = '';
+    }
+  }
+
+  /** Descarga la imagen tal cual se subió, para retocarla fuera. */
+  async function downloadImage(b: PlanBackground) {
+    const url = urls.get(b.id);
+    if (!url) return toast.error('La imagen aún no está disponible');
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const ext = b.storage_path.split('.').pop() || 'png';
+      const name = (b.label || 'imagen-de-fondo').replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '').trim() || 'imagen-de-fondo';
+      downloadBlob(blob, `${name}.${ext}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se ha podido descargar');
+    }
+  }
+
+  /**
+   * Cambia la imagen de la capa SIN tocar su calibración: posición, tamaño,
+   * giro, opacidad y modelo 3D se quedan como estaban. Es para subir la misma
+   * foto retocada (por ejemplo, sin las pérgolas pintadas en el suelo); si la
+   * nueva tiene otra proporción, se estira al tamaño de la capa.
+   *
+   * La imagen anterior no se borra: un escenario guardado o un evento
+   * duplicado pueden seguir usándola.
+   */
+  async function handleReplace(file: File) {
+    if (!selected) return;
+    setReplaceBusy(true);
+    try {
+      const path = await uploadFile(BUCKETS.planBackgrounds, plan.id, file);
+      onChange(selected.id, { storage_path: path });
+      toast.success('Imagen reemplazada. La calibración se mantiene.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se ha podido reemplazar la imagen');
+    } finally {
+      setReplaceBusy(false);
+      if (replaceRef.current) replaceRef.current.value = '';
+    }
+  }
 
   async function handleFile(file: File) {
     setBusy(true);
@@ -283,6 +350,90 @@ export function BackgroundPanel({
                             max={360}
                           />
                         </Field>
+
+                        <div>
+                          <input
+                            ref={replaceRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) void handleReplace(file);
+                            }}
+                          />
+                          <div className="flex flex-wrap gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              icon={<Download className="size-3.5" />}
+                              onClick={() => void downloadImage(b)}
+                            >
+                              Descargar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              loading={replaceBusy}
+                              icon={<RefreshCw className="size-3.5" />}
+                              onClick={() => replaceRef.current?.click()}
+                            >
+                              Reemplazar imagen
+                            </Button>
+                          </div>
+                          <p className="mt-1.5 text-[11px] leading-relaxed text-dim">
+                            Para retocar la foto fuera (por ejemplo, borrar del suelo lo que ya pinta
+                            el modelo 3D) y volver a subirla sin perder la calibración. Mejor con el
+                            mismo tamaño en píxeles.
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg border border-line bg-surface p-2.5">
+                          <p className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-ink">
+                            <Box className="size-3.5 text-accent-soft" /> Modelo 3D del recinto
+                          </p>
+                          <p className="mb-2 text-[11px] leading-relaxed text-dim">
+                            Lo que ya hay en el sitio (pérgolas, cubiertas, pilares) como .glb.
+                            Se ve solo en 3D, encajado sobre esta imagen con su misma escala y
+                            giro, y no estorba al colocar nada debajo.
+                          </p>
+                          <input
+                            ref={modelRef}
+                            type="file"
+                            accept=".glb,model/gltf-binary"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) void handleModel(file);
+                            }}
+                          />
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              loading={modelBusy}
+                              icon={<Upload className="size-3.5" />}
+                              onClick={() => modelRef.current?.click()}
+                            >
+                              {b.model_path ? 'Cambiar' : 'Subir .glb'}
+                            </Button>
+                            {b.model_path ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                icon={<Trash2 className="size-3.5" />}
+                                onClick={() => onChange(b.id, { model_path: null })}
+                              >
+                                Quitar
+                              </Button>
+                            ) : null}
+                          </div>
+                          {b.model_path ? (
+                            <p className="num mt-1.5 truncate text-[10.5px] text-muted">
+                              {b.model_path.split('/').pop()}
+                            </p>
+                          ) : null}
+                        </div>
 
                         <div className="flex items-center gap-1">
                           <IconToggle
