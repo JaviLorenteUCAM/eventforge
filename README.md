@@ -764,7 +764,7 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
   numerar, el plano queda limpio, solo con la forma de cada objeto;
 - el **cableado** por tipos, con su leyenda;
 - las **zonas**, de tres formas a elegir: **con nombre** («1 - Zona Fripozo» con su descripción
-  debajo), solo el **número** en una esquina de la zona, o **solo el color**; en las tres, la
+  debajo), solo el **número** en una esquina de la zona (con su tamaño ajustable), o **solo el color**; en las tres, la
   leyenda da el número, el nombre y la superficie;
 - los **puntos de luz y de red** con su símbolo (círculo con el rayo; cuadrado con tres nodos) y
   numerados (E1, E2… R1, R2…, de arriba abajo y de izquierda a derecha), en una sección

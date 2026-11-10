@@ -58,6 +58,8 @@ export interface ExportOptions {
   zones: boolean;
   /** Cómo se rotulan las zonas (por defecto, con su nombre). */
   zoneStyle?: ZoneStyle;
+  /** Tamaño del número de zona (modo número): 1 = 16 mm de círculo en la hoja. */
+  zoneNumberSize?: number;
   /** Puntos de luz y de red con su símbolo y numerados (E1, R1…). */
   feeds: boolean;
   /** Número de cada objeto en el plano. Sin él queda solo su forma, a escala. */
@@ -482,10 +484,11 @@ export function toSvg(d: Drawing): string {
   for (const z of d.zones) {
     if (zoneStyle === 'color') continue;
     if (zoneStyle === 'number') {
-      const b = P(zoneCorner(z.points, z.centre, 9.5 / sh.k));
+      const f = zoneNumberScale(d.options);
+      const b = P(zoneCorner(z.points, z.centre, (8 * f + 1.5) / sh.k));
       out.push(
-        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="8" fill="#fff" stroke="${z.zone.color}" stroke-width="1"/>`,
-        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="9.2" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
+        `<circle cx="${n(b.x)}" cy="${n(b.y)}" r="${n(8 * f)}" fill="#fff" stroke="${z.zone.color}" stroke-width="${n(Math.max(0.35, f))}"/>`,
+        `<text x="${n(b.x)}" y="${n(b.y)}" font-size="${n(9.2 * f)}" font-weight="bold" text-anchor="middle" dominant-baseline="central">${z.zone.number}</text>`,
       );
       continue;
     }
@@ -592,6 +595,12 @@ function feedSymbol(kind: string, cx: number, cy: number, r: number): string {
     `<path d="M${n(t.x)} ${n(t.y)}L${n(a.x)} ${n(a.y)}M${n(t.x)} ${n(t.y)}L${n(b.x)} ${n(b.y)}M${n(a.x)} ${n(a.y)}L${n(b.x)} ${n(b.y)}" stroke="#000" stroke-width="0.25"/>` +
     [t, a, b].map((p) => `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(0.45 * k)}" fill="#000"/>`).join('')
   );
+}
+
+/** Factor de tamaño del número de zona, dentro de un margen razonable. */
+function zoneNumberScale(o: ExportOptions) {
+  const f = Number(o.zoneNumberSize ?? 1);
+  return Number.isFinite(f) ? Math.min(3, Math.max(0.25, f)) : 1;
 }
 
 /**
@@ -1254,9 +1263,10 @@ export function toDxf(d: Drawing): string {
     poly('ZONAS', z.points, true);
     if (zoneStyle === 'color') continue;
     if (zoneStyle === 'number') {
-      const b = zoneCorner(z.points, z.centre, 9.5 * mm);
-      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (8 * mm).toFixed(3));
-      text('ZONAS', b, 9.2 * mm, String(z.zone.number));
+      const f = zoneNumberScale(d.options);
+      const b = zoneCorner(z.points, z.centre, (8 * f + 1.5) * mm);
+      g(0, 'CIRCLE'); g(8, 'ZONAS'); g(10, X(b.x)); g(20, Y(b.y)); g(30, 0); g(40, (8 * f * mm).toFixed(3));
+      text('ZONAS', b, 9.2 * f * mm, String(z.zone.number));
       continue;
     }
     text('ZONAS', z.centre, 2.8 * mm, `${z.zone.number} - ${z.zone.name || 'Zona'}`);

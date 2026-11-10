@@ -81,6 +81,7 @@ export function ExportPlanModal({
   const [venue, setVenue] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [zoneStyle, setZoneStyle] = useState<ZoneStyle>('label');
+  const [zoneNumberSize, setZoneNumberSize] = useState(1);
   const [feeds, setFeeds] = useState(true);
   const [marks, setMarks] = useState(false);
   const [withMaterial, setWithMaterial] = useState(true);
@@ -203,6 +204,7 @@ export function ExportPlanModal({
               venue,
               zones: showZones,
               zoneStyle,
+              zoneNumberSize,
               feeds,
               marks,
               material: withMaterial,
@@ -215,7 +217,7 @@ export function ExportPlanModal({
     [
       open, plan, event, objects, connections, venues, photos, zones, author, material, categoryNames,
       materialByZone, byZone,
-      paper, scale, photo, cables, venue, showZones, zoneStyle, feeds, marks, withMaterial, markMissing, view,
+      paper, scale, photo, cables, venue, showZones, zoneStyle, zoneNumberSize, feeds, marks, withMaterial, markMissing, view,
     ],
   );
   const svg = useMemo(() => (drawing ? toSvg(drawing) : ''), [drawing]);
@@ -410,6 +412,24 @@ export function ExportPlanModal({
                     { value: 'color', label: 'Solo color' },
                   ]}
                 />
+                {zoneStyle === 'number' ? (
+                  <div className="mt-2 max-w-[260px]">
+                    <div className="mb-1 flex items-center justify-between text-[12.5px]">
+                      <span className="text-muted">Tamaño del número</span>
+                      <span className="num text-ink">{Math.round(zoneNumberSize * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.25}
+                      max={3}
+                      step={0.05}
+                      value={zoneNumberSize}
+                      onChange={(e) => setZoneNumberSize(Number(e.target.value))}
+                      aria-label="Tamaño del número de zona"
+                      className="w-full accent-[var(--ef-cyan)]"
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <Checkbox
@@ -454,7 +474,7 @@ export function ExportPlanModal({
           </div>
           <p className="text-[11.5px] leading-relaxed text-dim">
             Los objetos iguales comparten número y la leyenda dice cuántos hay. Las zonas salen
-            rotuladas («1 - Zona Fripozo») y los puntos de luz y de red, con su símbolo y numerados. El DXF va en metros
+            con su nombre, solo con su número o solo con su color (la leyenda las explica), y los puntos de luz y de red, con su símbolo y numerados. El DXF va en metros
             reales y por capas (recinto, objetos, marcas, cada tipo de cable, pilares y cubiertas),
             siempre con el plano entero.
           </p>
