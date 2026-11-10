@@ -17,6 +17,10 @@ import { loadModel } from './modelLoader';
  * la imagen mida lo que mida su capa ya calibrada, y se gira y se coloca igual
  * que ella. Si el modelo no trae esas medidas se usa tal cual, en metros.
  *
+ * Encima va el AJUSTE de la capa (desplazamiento, giro y escala), para cuando
+ * la foto del plano no es exactamente la captura para la que se hizo el
+ * modelo. Giro y escala se aplican alrededor del centro de la imagen.
+ *
  * No lleva manejadores de eventos: los clics lo atraviesan hasta el suelo y
  * los objetos, de modo que se puede seguir colocando y arrastrando debajo.
  */
@@ -27,6 +31,10 @@ export function EnvironmentModel({
   width,
   height,
   rotation,
+  offsetX = 0,
+  offsetY = 0,
+  extraRotation = 0,
+  scale = 1,
 }: {
   url: string;
   x: number;
@@ -34,6 +42,10 @@ export function EnvironmentModel({
   width: number;
   height: number;
   rotation: number;
+  offsetX?: number;
+  offsetY?: number;
+  extraRotation?: number;
+  scale?: number;
 }) {
   const [source, setSource] = useState<THREE.Group | null>(null);
 
@@ -77,7 +89,11 @@ export function EnvironmentModel({
   return (
     // Mismo giro que la imagen (alrededor de su centro) y el modelo desde su
     // esquina superior izquierda.
-    <group position={[x + width / 2, 0, y + height / 2]} rotation={[0, (-rotation * Math.PI) / 180, 0]}>
+    <group
+      position={[x + width / 2 + offsetX, 0, y + height / 2 + offsetY]}
+      rotation={[0, (-(rotation + extraRotation) * Math.PI) / 180, 0]}
+      scale={scale > 0 ? scale : 1}
+    >
       <group position={[-width / 2, 0, -height / 2]} scale={[sx, sy, sz]}>
         <primitive object={root} />
       </group>

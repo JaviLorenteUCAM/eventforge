@@ -423,6 +423,10 @@ function Scene({
                 width={Number(b.width_m)}
                 height={Number(b.height_m)}
                 rotation={Number(b.rotation)}
+                offsetX={Number(b.model_offset_x ?? 0)}
+                offsetY={Number(b.model_offset_y ?? 0)}
+                extraRotation={Number(b.model_rotation ?? 0)}
+                scale={Number(b.model_scale ?? 1)}
               />
             ))
         : null}

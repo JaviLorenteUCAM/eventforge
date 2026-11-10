@@ -179,6 +179,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 15 | `supabase/migrations/0015_model_floor_offset.sql` | Altura del suelo del modelo (silueta y volumen) |
 | 16 | `supabase/migrations/0016_object_models.sql` | Modelos 3D (.glb) en el material y el catálogo, y su bucket |
 | 17 | `supabase/migrations/0017_background_models.sql` | Modelo 3D del recinto, pegado a la imagen de fondo |
+| 18 | `supabase/migrations/0018_background_model_adjust.sql` | Ajuste del modelo del recinto: desplazamiento, giro y escala |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -587,7 +588,8 @@ eventforge/
 │       ├── 0014_volume_mode.sql       # modo de textura «volumen»
 │       ├── 0015_model_floor_offset.sql # altura del suelo del modelo
 │       ├── 0016_object_models.sql     # modelos 3D (.glb) y bucket models
-│       └── 0017_background_models.sql # modelo 3D del recinto en la capa de fondo
+│       ├── 0017_background_models.sql # modelo 3D del recinto en la capa de fondo
+│       └── 0018_background_model_adjust.sql # ajuste del modelo sobre su imagen
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -770,6 +772,11 @@ imagen de fondo** a la que corresponde (en la capa, *Modelo 3D del recinto → S
   se coloca debajo no «se apoya» en el tejado.
 - El botón **Recinto 3D** de la barra lo oculta para ver lo que hay debajo de las cubiertas.
 - Viaja con la imagen al duplicar el evento y al guardar o cargar un escenario.
+- **Colocarlo sobre la foto**: si la imagen del plano no es exactamente la captura para la que
+  se hizo el modelo, se recoloca desde la capa con flechas (en los ejes del plano), giro a un
+  lado y a otro, y campos de desplazamiento, giro y escala. *Fino* mueve 10 cm y 0,5°; *Grueso*,
+  1 m y 5°; la mira lo devuelve a su sitio. Giro y escala van alrededor del centro de la imagen,
+  y el ajuste viaja con la capa.
 
 El `.glb` va en el **marco de la imagen**: origen en su esquina superior izquierda, X hacia la
 derecha, Z hacia abajo de la foto, en metros. Si en los *extras* de la escena trae

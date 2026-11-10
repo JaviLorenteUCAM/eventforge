@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Box,
+  Crosshair,
   Download,
   Eye,
   EyeOff,
@@ -9,6 +14,8 @@ import {
   LockOpen,
   Move,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
   Ruler,
   Trash2,
   Upload,
@@ -17,7 +24,7 @@ import { toast } from 'sonner';
 import { Button, ConfirmDialog, Field, NumberInput } from '@/components/ui';
 import { BUCKETS, uploadFile, uploadModel } from '@/lib/storage';
 import type { Plan, PlanBackground } from '@/lib/types';
-import { cn, downloadBlob, fmtNum } from '@/lib/utils';
+import { cn, downloadBlob, fmtNum, round } from '@/lib/utils';
 import { usePlanStore } from './planStore';
 
 /**
@@ -433,6 +440,7 @@ export function BackgroundPanel({
                               {b.model_path.split('/').pop()}
                             </p>
                           ) : null}
+                          {b.model_path ? <ModelAdjust background={b} onChange={onChange} /> : null}
                         </div>
 
                         <div className="flex items-center gap-1">
@@ -498,6 +506,150 @@ export function BackgroundPanel({
           Esta capa está bloqueada: desbloquéala para moverla.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * AJUSTE DEL MODELO DEL RECINTO SOBRE LA FOTO
+ *
+ * Si la foto del plano no es la misma captura para la que se hizo el modelo,
+ * no cae en su sitio. Aquí se recoloca a ojo, mirando el 3D: flechas para
+ * empujarlo (en los ejes del plano: ↑ es hacia arriba del 2D), giro a un lado
+ * y a otro, y campos para afinar con números. «Fino» mueve 10 cm y 0,5°;
+ * «Grueso», 1 m y 5°.
+ */
+function ModelAdjust({
+  background: b,
+  onChange,
+}: {
+  background: PlanBackground;
+  onChange: (id: string, patch: Partial<PlanBackground>) => void;
+}) {
+  const [coarse, setCoarse] = useState(false);
+  const step = coarse ? 1 : 0.1;
+  const turn = coarse ? 5 : 0.5;
+
+  const dx = Number(b.model_offset_x ?? 0);
+  const dy = Number(b.model_offset_y ?? 0);
+  const rot = Number(b.model_rotation ?? 0);
+  const scale = Number(b.model_scale ?? 1);
+
+  const move = (mx: number, my: number) =>
+    onChange(b.id, {
+      model_offset_x: round(dx + mx * step, 3),
+      model_offset_y: round(dy + my * step, 3),
+    });
+  const rotate = (dir: number) => onChange(b.id, { model_rotation: round(rot + dir * turn, 2) });
+
+  const pad = 'grid size-7 place-items-center rounded-md border border-line bg-surface-2 text-muted transition-colors hover:text-ink';
+
+  return (
+    <div className="mt-2.5 space-y-2.5 border-t border-line pt-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-muted">Colocarlo sobre la foto</span>
+        <div className="flex overflow-hidden rounded-md border border-line text-[10.5px]">
+          {[
+            ['Fino', false],
+            ['Grueso', true],
+          ].map(([label, value]) => (
+            <button
+              key={String(label)}
+              onClick={() => setCoarse(value as boolean)}
+              className={cn(
+                'px-2 py-0.5 transition-colors',
+                coarse === value ? 'bg-surface-2 text-ink' : 'text-dim hover:text-muted',
+              )}
+            >
+              {label as string}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="grid grid-cols-3 gap-1">
+          <span />
+          <button className={pad} onClick={() => move(0, -1)} aria-label="Mover hacia arriba">
+            <ArrowUp className="size-3.5" />
+          </button>
+          <span />
+          <button className={pad} onClick={() => move(-1, 0)} aria-label="Mover a la izquierda">
+            <ArrowLeft className="size-3.5" />
+          </button>
+          <button
+            className={pad}
+            onClick={() =>
+              onChange(b.id, { model_offset_x: 0, model_offset_y: 0, model_rotation: 0, model_scale: 1 })
+            }
+            aria-label="Volver a la posición de la foto"
+            title="Volver a la posición de la foto"
+          >
+            <Crosshair className="size-3.5" />
+          </button>
+          <button className={pad} onClick={() => move(1, 0)} aria-label="Mover a la derecha">
+            <ArrowRight className="size-3.5" />
+          </button>
+          <span />
+          <button className={pad} onClick={() => move(0, 1)} aria-label="Mover hacia abajo">
+            <ArrowDown className="size-3.5" />
+          </button>
+          <span />
+        </div>
+        <div className="flex flex-col gap-1">
+          <button className={pad} onClick={() => rotate(-1)} aria-label="Girar a la izquierda">
+            <RotateCcw className="size-3.5" />
+          </button>
+          <button className={pad} onClick={() => rotate(1)} aria-label="Girar a la derecha">
+            <RotateCw className="size-3.5" />
+          </button>
+        </div>
+        <p className="min-w-0 flex-1 text-[10.5px] leading-relaxed text-dim">
+          Míralo en 3D desde arriba mientras lo mueves: las cubiertas tienen que caer sobre las de
+          la foto. La mira lo devuelve a su sitio.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Desplazar X">
+          <NumberInput
+            value={dx}
+            onChange={(v) => onChange(b.id, { model_offset_x: v })}
+            unit="m"
+            step={0.1}
+            min={-9999}
+          />
+        </Field>
+        <Field label="Desplazar Y">
+          <NumberInput
+            value={dy}
+            onChange={(v) => onChange(b.id, { model_offset_y: v })}
+            unit="m"
+            step={0.1}
+            min={-9999}
+          />
+        </Field>
+        <Field label="Giro">
+          <NumberInput
+            value={rot}
+            onChange={(v) => onChange(b.id, { model_rotation: v })}
+            unit="°"
+            step={0.5}
+            min={-360}
+            max={360}
+          />
+        </Field>
+        <Field label="Escala">
+          <NumberInput
+            value={round(scale * 100, 1)}
+            onChange={(v) => onChange(b.id, { model_scale: Math.min(20, Math.max(0.05, v / 100)) })}
+            unit="%"
+            step={0.5}
+            min={5}
+            max={2000}
+          />
+        </Field>
+      </div>
     </div>
   );
 }

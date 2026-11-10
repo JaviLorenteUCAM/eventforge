@@ -609,6 +609,15 @@ export interface PlanBackground {
    * sobre esta imagen, con su misma posición, escala y giro.
    */
   model_path: string | null;
+  /**
+   * Ajuste del modelo respecto a la imagen, para cuando la foto del plano no
+   * es exactamente la captura para la que se hizo: desplazamiento en metros
+   * (ejes del plano), giro extra en grados y escala (1 = la de la calibración).
+   */
+  model_offset_x: number;
+  model_offset_y: number;
+  model_rotation: number;
+  model_scale: number;
   created_at: string;
   updated_at: string;
 }

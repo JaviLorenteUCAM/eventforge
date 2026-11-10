@@ -92,6 +92,7 @@ const FILES = [
   '0015_model_floor_offset.sql',
   '0016_object_models.sql',
   '0017_background_models.sql',
+  '0018_background_model_adjust.sql',
 ];
 let allOk = true;
 
@@ -280,8 +281,11 @@ console.log(
 console.log('\n\x1b[1mFondos de plano y escenarios\x1b[0m');
 
 await db.exec(`
-  insert into public.plan_backgrounds (plan_id, storage_path, label, opacity, x, y, width_m, height_m, model_path)
-  values ('${planId}', 'demo/patio.jpg', 'Foto aérea', 0.55, 0, 0, 18, 12, 'recintos/pergolas.glb')
+  insert into public.plan_backgrounds
+    (plan_id, storage_path, label, opacity, x, y, width_m, height_m, model_path,
+     model_offset_x, model_offset_y, model_rotation, model_scale)
+  values ('${planId}', 'demo/patio.jpg', 'Foto aérea', 0.55, 0, 0, 18, 12, 'recintos/pergolas.glb',
+          2.5, -1.25, 12.5, 1.05)
 `);
 
 const scen = await db.query(
@@ -332,23 +336,27 @@ console.log(
 // El modelo 3D del recinto (0017) viaja con su imagen: escenario de ida y
 // vuelta, y duplicado del evento que lo recibe.
 {
+  // Con su ajuste (0018): desplazamiento, giro y escala.
+  const cols = `model_path, model_offset_x::float as dx, model_offset_y::float as dy,
+    model_rotation::float as giro, model_scale::float as escala`;
   const enPlano2 = await db.query(
-    `select model_path from public.plan_backgrounds where plan_id='${plan2Id}'`,
+    `select ${cols} from public.plan_backgrounds where plan_id='${plan2Id}'`,
   );
   const dup = await db.query(
     `select public.duplicate_event('${ev2.rows[0].id}', 'Copia con recinto', now() + interval '60 days') as id`,
   );
   const enCopia = await db.query(`
-    select b.model_path from public.plan_backgrounds b
+    select ${cols.replace(/model_/g, 'b.model_')} from public.plan_backgrounds b
     join public.plans p on p.id = b.plan_id
     where p.event_id = '${dup.rows[0].id}'`);
-  const ok =
-    enPlano2.rows[0]?.model_path === 'recintos/pergolas.glb' &&
-    enCopia.rows[0]?.model_path === 'recintos/pergolas.glb';
+  const fiel = (r) =>
+    r?.model_path === 'recintos/pergolas.glb' &&
+    r.dx === 2.5 && r.dy === -1.25 && r.giro === 12.5 && r.escala === 1.05;
+  const ok = fiel(enPlano2.rows[0]) && fiel(enCopia.rows[0]);
   if (!ok) allOk = false;
   console.log(
     ok
-      ? '  \x1b[32m✓\x1b[0m El modelo 3D del recinto viaja con su imagen (escenario y duplicado)'
+      ? '  \x1b[32m✓\x1b[0m El modelo 3D del recinto y su ajuste viajan con su imagen (escenario y duplicado)'
       : `  \x1b[31m✗\x1b[0m El modelo del recinto se pierde: ${JSON.stringify([enPlano2.rows, enCopia.rows])}`,
   );
 }
