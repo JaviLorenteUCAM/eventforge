@@ -80,7 +80,7 @@ export interface ExportOptions {
 
 export interface ExportInput {
   plan: Plan;
-  event: Pick<EventRow, 'name' | 'location' | 'starts_at'> | null;
+  event: Pick<EventRow, 'name' | 'location' | 'starts_at'> & Partial<Pick<EventRow, 'ends_at'>> | null;
   objects: PlanObject[];
   connections: PlanConnection[];
   /** Capas con modelo del recinto y su planta ya calculada. */
@@ -775,12 +775,24 @@ function titleBlock(d: Drawing, sh: Sheet, page: number, pages: number, kind: st
   const fit = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
   const by = y + h - blockH;
   const ev = d.input.event;
-  const fecha = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  // Dos fechas que no hay que confundir: la del evento (cuándo se monta) y la
+  // de esta hoja (cuándo se sacó, por si hay versiones más nuevas).
+  const day = (v: string | Date) =>
+    new Date(v).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const eventDate = (() => {
+    if (!ev?.starts_at) return '—';
+    const a = day(ev.starts_at);
+    const b = ev.ends_at ? day(ev.ends_at) : a;
+    return a === b ? a : `${a} – ${b}`;
+  })();
+  const now = new Date();
+  const generated = `${day(now)} · ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
   const fields: [string, string][] = [
     ['EVENTO', ev?.name ?? '—'],
     [kind, kind === 'PLANO' ? d.input.plan.name : `Material · ${d.input.plan.name}`],
     ['LUGAR', ev?.location || '—'],
-    ['FECHA', fecha],
+    ['FECHA EVENTO', eventDate],
+    ['GENERADO', generated],
     ['ESCALA', kind === 'PLANO' ? `1:${sh.denom}` : '—'],
     ['FORMATO', `${d.options.paper} · medidas en m`],
     ['AUTOR', d.input.author || '—'],
@@ -792,11 +804,11 @@ function titleBlock(d: Drawing, sh: Sheet, page: number, pages: number, kind: st
     out.push(
       `<path d="M${x} ${n(fy + fh)}H${x + w}" stroke="#000" stroke-width="0.12"/>`,
       `<text x="${x + 2.5}" y="${n(fy + fh * 0.62)}" font-size="1.7" fill="#555">${k}</text>`,
-      `<text x="${x + 17}" y="${n(fy + fh * 0.66)}" font-size="${k === 'EVENTO' ? 2.6 : 2.2}" font-weight="${k === 'EVENTO' || k === 'ESCALA' ? 'bold' : 'normal'}">${esc(fit(v, Math.floor((w - 19) / 1.25)))}</text>`,
+      `<text x="${x + 19.5}" y="${n(fy + fh * 0.66)}" font-size="${k === 'EVENTO' ? 2.6 : 2.2}" font-weight="${k === 'EVENTO' || k === 'ESCALA' ? 'bold' : 'normal'}">${esc(fit(v, Math.floor((w - 21.5) / 1.25)))}</text>`,
     );
   });
   out.push(
-    `<path d="M${x + 15} ${by}V${by + blockH - 10}" stroke="#000" stroke-width="0.12"/>`,
+    `<path d="M${x + 17.5} ${by}V${by + blockH - 10}" stroke="#000" stroke-width="0.12"/>`,
     `<text x="${x + 2.5}" y="${y + h - 4}" font-size="2.6" font-weight="bold" letter-spacing="0.2">EventForge</text>`,
     `<text x="${x + w - 2.5}" y="${y + h - 4}" font-size="1.8" fill="#555" text-anchor="end">Hoja ${page}/${pages}</text>`,
   );

@@ -780,7 +780,8 @@ una hoja normalizada (A4, A3 o A2 apaisada) a escala de arquitectura —la mayor
   lo que queda por encima. Lo que toca el suelo se saca de la geometría (las caras de abajo a ras
   de suelo), así que vale para cualquier modelo;
 - la **foto de fondo** en gris, si se quiere;
-- el **cajetín**: evento, plano, lugar, fecha, escala, formato y autor.
+- el **cajetín**: evento, plano, lugar, **fecha del evento** y **fecha de generación** (día y hora en
+  que se sacó la hoja, por separado para no confundirlas), escala, formato y autor.
 
 **Encuadre**: en la vista previa se arrastra el dibujo para elegir qué parte del plano sale, y
 con la rueda o con − / + se acerca o aleja entre las escalas normalizadas (1:20 … 1:2000), así
