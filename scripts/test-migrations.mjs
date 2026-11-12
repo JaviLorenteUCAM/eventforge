@@ -96,6 +96,7 @@ const FILES = [
   '0019_plan_zones.sql',
   '0020_zone_description.sql',
   '0021_style_materials.sql',
+  '0022_task_assignees.sql',
 ];
 let allOk = true;
 
@@ -199,8 +200,30 @@ await db.exec(`insert into public.schedule_days (event_id, day_index, label)
 const day = await db.query(`select id from public.schedule_days where event_id='${eventId}'`);
 await db.exec(`insert into public.schedule_activities (event_id, day_id, title)
   values ('${eventId}', '${day.rows[0].id}', 'Montaje')`);
-await db.exec(`insert into public.tasks (event_id, title, created_by)
-  values ('${eventId}', 'Tarea de prueba', '${uid}')`);
+const u2 = (await db.query(`insert into auth.users (email) values ('ana@eventforge.invalid') returning id`)).rows[0].id;
+const u3 = (await db.query(`insert into auth.users (email) values ('luis@eventforge.invalid') returning id`)).rows[0].id;
+await db.exec(`insert into public.profiles (id, name, role_title) values ('${u2}', 'Ana', 'Montaje'), ('${u3}', 'Luis', 'Montaje')`);
+await db.exec(`insert into public.tasks (event_id, title, created_by, assignee_ids)
+  values ('${eventId}', 'Tarea de prueba', '${uid}', array['${u2}', '${u3}', '${u2}']::uuid[])`);
+{
+  const t = (await db.query(`select assignee_id, assignee_ids from public.tasks where event_id='${eventId}'`)).rows[0];
+  const ids = t.assignee_ids ?? [];
+  console.log(
+    ids.length === 2 && ids[0] === u2 && ids[1] === u3 && t.assignee_id === u2
+      ? '  \x1b[32m✓\x1b[0m Una tarea guarda varias personas, sin repetir, y la primera queda como principal'
+      : `  \x1b[31m✗\x1b[0m Las personas de la tarea no cuadran: ${JSON.stringify(t)}`,
+  );
+  // Código antiguo que solo escribe assignee_id: la lista se rehace con esa persona.
+  await db.exec(`update public.tasks set assignee_id = '${uid}' where event_id='${eventId}'`);
+  const t2 = (await db.query(`select assignee_ids from public.tasks where event_id='${eventId}'`)).rows[0];
+  // Y se vuelve a dejar con dos personas para la copia.
+  await db.exec(`update public.tasks set assignee_ids = array['${u2}', '${u3}']::uuid[] where event_id='${eventId}'`);
+  console.log(
+    (t2.assignee_ids ?? []).length === 1 && t2.assignee_ids[0] === uid
+      ? '  \x1b[32m✓\x1b[0m Escribir solo la persona principal (código antiguo) rehace la lista'
+      : '  \x1b[31m✗\x1b[0m Escribir solo assignee_id deja la lista desfasada',
+  );
+}
 
 const copy = await db.query(
   `select public.duplicate_event('${eventId}', 'Copia de prueba', now() + interval '30 days') as id`,
@@ -223,6 +246,22 @@ console.log(`  duplicate_event() → ${r.planos} plano, ${r.objetos} objetos, ${
 
 const okDup =
   r.planos === 1 && r.objetos === 2 && r.cables === 1 && r.actividades === 1 && r.tareas === 1;
+{
+  const ct = (await db.query(`select assignee_ids from public.tasks where event_id='${copyId}'`)).rows[0];
+  console.log(
+    (ct?.assignee_ids ?? []).length === 2
+      ? '  \x1b[32m✓\x1b[0m Al duplicar el evento, las tareas conservan todas sus personas'
+      : '  \x1b[31m✗\x1b[0m Al duplicar, las tareas pierden personas',
+  );
+  // Borrar un perfil lo quita de las listas sin tocar al resto.
+  await db.exec(`delete from auth.users where id = '${u3}'`);
+  const after = (await db.query(`select assignee_id, assignee_ids from public.tasks where event_id='${eventId}'`)).rows[0];
+  console.log(
+    (after.assignee_ids ?? []).length === 1 && after.assignee_ids[0] === u2 && after.assignee_id === u2
+      ? '  \x1b[32m✓\x1b[0m Al borrar un perfil sale de las tareas y el resto se queda'
+      : `  \x1b[31m✗\x1b[0m Borrar un perfil deja las tareas mal: ${JSON.stringify(after)}`,
+  );
+}
 console.log(
   okDup
     ? '  \x1b[32m✓\x1b[0m La copia conserva toda la estructura'

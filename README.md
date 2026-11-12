@@ -183,6 +183,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 19 | `supabase/migrations/0019_plan_zones.sql` | Zonas del plano (número, nombre, color y pines) |
 | 20 | `supabase/migrations/0020_zone_description.sql` | Descripción opcional de las zonas |
 | 21 | `supabase/migrations/0021_style_materials.sql` | Materiales para estilos, compartidos entre objetos |
+| 22 | `supabase/migrations/0022_task_assignees.sql` | Tareas con varias personas asignadas |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -595,7 +596,8 @@ eventforge/
 │       ├── 0018_background_model_adjust.sql # ajuste del modelo sobre su imagen
 │       ├── 0019_plan_zones.sql        # zonas marcadas del plano
 │       ├── 0020_zone_description.sql  # descripción de las zonas
-│       └── 0021_style_materials.sql   # materiales para estilos (manteles compartidos)
+│       ├── 0021_style_materials.sql   # materiales para estilos (manteles compartidos)
+│       └── 0022_task_assignees.sql    # tareas con varias personas
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -1217,8 +1219,10 @@ EventForge **no pide acceso a tu cuenta de Google**: eso exigiría permisos de e
 todo tu Drive, y no hace falta para copiar una tabla.
 
 ### Tareas
-Tablero de tres columnas (Pendiente / En proceso / Hecha) con responsable, prioridad, fecha
-límite y aviso de retraso. Un clic en el icono cambia el estado.
+Tablero de tres columnas (Pendiente / En proceso / Hecha) con responsables, prioridad, fecha
+límite y aviso de retraso. Un clic en el icono cambia el estado. Una tarea puede tener **varias
+personas** (se marcan en la ficha); en la tarjeta salen sus caras y el filtro *Mías* incluye las
+tareas en las que estás entre ellas. Al duplicar el evento, las tareas conservan a todas.
 
 ### Personas del equipo
 En **Configuración → Perfiles del equipo**, un administrador puede **añadir** a alguien

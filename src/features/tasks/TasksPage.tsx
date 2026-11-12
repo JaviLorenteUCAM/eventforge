@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   ConfirmDialog,
   EmptyState,
   ErrorState,
@@ -37,6 +38,8 @@ import {
   type TaskStatus,
 } from '@/lib/types';
 import { cn, fmtDate, normalize, relativeDay } from '@/lib/utils';
+import { assigneesOf, isAssignedTo } from '@/lib/tasks';
+import { TaskPeople } from './TaskPeople';
 
 const STATUS_ICON: Record<TaskStatus, React.ReactNode> = {
   pending: <Circle className="size-4 text-dim" />,
@@ -73,7 +76,7 @@ export function TasksPage() {
   const filtered = useMemo(() => {
     const q = normalize(search);
     return (tasks.data ?? []).filter((t) => {
-      if (filter === 'mine' && t.assignee_id !== profile?.id) return false;
+      if (filter === 'mine' && !isAssignedTo(t, profile?.id)) return false;
       if (filter !== 'all' && filter !== 'mine' && t.status !== filter) return false;
       if (q && !normalize(`${t.title} ${t.description}`).includes(q)) return false;
       return true;
@@ -184,7 +187,6 @@ export function TasksPage() {
               <div className="space-y-2.5">
                 <AnimatePresence initial={false}>
                   {col.items.map((t) => {
-                    const owner = t.assignee_id ? profileById.get(t.assignee_id) : null;
                     const overdue =
                       t.due_date && t.status !== 'done' && new Date(t.due_date) < new Date();
                     return (
@@ -249,15 +251,11 @@ export function TasksPage() {
                                 {relativeDay(t.due_date)}
                               </span>
                             ) : null}
-                            {owner ? (
-                              <Avatar
-                                name={owner.name}
-                                avatarUrl={owner.avatar_url}
-                                color={owner.color}
-                                size="xs"
-                                className="ml-auto"
-                              />
-                            ) : null}
+                            <TaskPeople
+                              ids={assigneesOf(t)}
+                              profiles={profileById}
+                              className="ml-auto"
+                            />
                           </div>
                         </Card>
                       </motion.div>
@@ -323,7 +321,7 @@ function TaskFormModal({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [assignee, setAssignee] = useState('');
+  const [people, setPeople] = useState<string[]>([]);
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [status, setStatus] = useState<TaskStatus>('pending');
   const [dueDate, setDueDate] = useState('');
@@ -333,7 +331,7 @@ function TaskFormModal({
     if (!open) return;
     setTitle(task?.title ?? '');
     setDescription(task?.description ?? '');
-    setAssignee(task?.assignee_id ?? '');
+    setPeople(task ? assigneesOf(task) : []);
     setPriority(task?.priority ?? 'medium');
     setStatus(task?.status ?? 'pending');
     setDueDate(task?.due_date ?? '');
@@ -348,7 +346,7 @@ function TaskFormModal({
     const values: Partial<Task> = {
       title: title.trim(),
       description: description.trim(),
-      assignee_id: assignee || null,
+      assignee_ids: people,
       priority,
       status,
       due_date: dueDate || null,
@@ -386,15 +384,31 @@ function TaskFormModal({
         <Field label="Descripción" className="sm:col-span-2">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <Field label="Responsable">
-          <Select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-            <option value="">Sin asignar</option>
+        <Field
+          label="Responsables"
+          hint={people.length ? `${people.length} ${people.length === 1 ? 'persona' : 'personas'}` : 'Sin asignar'}
+          className="sm:col-span-2"
+        >
+          <div className="grid max-h-[220px] gap-2 overflow-y-auto sm:grid-cols-2">
             {(profiles.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
+              <label
+                key={p.id}
+                className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3 py-2"
+              >
+                <Checkbox
+                  label=""
+                  checked={people.includes(p.id)}
+                  onChange={(e) =>
+                    setPeople((prev) =>
+                      e.target.checked ? [...prev, p.id] : prev.filter((id) => id !== p.id),
+                    )
+                  }
+                />
+                <Avatar name={p.name} avatarUrl={p.avatar_url} color={p.color} size="xs" />
+                <span className="truncate text-[13px] text-ink">{p.name}</span>
+              </label>
             ))}
-          </Select>
+          </div>
         </Field>
         <Field label="Prioridad">
           <Select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>

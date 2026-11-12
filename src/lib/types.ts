@@ -192,7 +192,10 @@ export interface Task {
   event_id: string;
   title: string;
   description: string;
+  /** La primera persona de la lista (se mantiene sola en la base de datos). */
   assignee_id: string | null;
+  /** Todas las personas asignadas, en orden. */
+  assignee_ids: string[];
   priority: TaskPriority;
   status: TaskStatus;
   due_date: string | null;

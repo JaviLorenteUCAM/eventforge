@@ -16,7 +16,6 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { Page, PageHeader } from '@/components/layout/PageHeader';
 import {
-  Avatar,
   Badge,
   Button,
   Card,
@@ -51,6 +50,8 @@ import {
   type EventRow,
 } from '@/lib/types';
 import { fmtDate, fmtNum, hhmm, relativeDay } from '@/lib/utils';
+import { assigneesOf, isAssignedTo } from '@/lib/tasks';
+import { TaskPeople } from '@/features/tasks/TaskPeople';
 
 function greeting() {
   const h = new Date().getHours();
@@ -92,7 +93,7 @@ export function DashboardPage() {
   const focusEvent = running[0] ?? upcoming[0] ?? null;
 
   const openTasks = (tasks.data ?? []).filter((t) => t.status !== 'done');
-  const myTasks = openTasks.filter((t) => t.assignee_id === profile?.id);
+  const myTasks = openTasks.filter((t) => isAssignedTo(t, profile?.id));
 
   const progressByEvent = useMemo(() => {
     const map = new Map<string, { total: number; done: number }>();
@@ -261,7 +262,6 @@ export function DashboardPage() {
                   .sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999'))
                   .slice(0, 7)
                   .map((t) => {
-                    const owner = t.assignee_id ? profiles.get(t.assignee_id) : null;
                     return (
                       <Link
                         key={t.id}
@@ -284,14 +284,7 @@ export function DashboardPage() {
                             ) : null}
                           </div>
                         </div>
-                        {owner ? (
-                          <Avatar
-                            name={owner.name}
-                            avatarUrl={owner.avatar_url}
-                            color={owner.color}
-                            size="xs"
-                          />
-                        ) : null}
+                        <TaskPeople ids={assigneesOf(t)} profiles={profiles} max={3} />
                       </Link>
                     );
                   })
