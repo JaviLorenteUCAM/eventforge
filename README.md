@@ -182,6 +182,7 @@ de estos ficheros, **en este orden**, uno cada vez:
 | 18 | `supabase/migrations/0018_background_model_adjust.sql` | Ajuste del modelo del recinto: desplazamiento, giro y escala |
 | 19 | `supabase/migrations/0019_plan_zones.sql` | Zonas del plano (número, nombre, color y pines) |
 | 20 | `supabase/migrations/0020_zone_description.sql` | Descripción opcional de las zonas |
+| 21 | `supabase/migrations/0021_style_materials.sql` | Materiales para estilos, compartidos entre objetos |
 
 Cada uno debe terminar con `Success. No rows returned`.
 
@@ -593,7 +594,8 @@ eventforge/
 │       ├── 0017_background_models.sql # modelo 3D del recinto en la capa de fondo
 │       ├── 0018_background_model_adjust.sql # ajuste del modelo sobre su imagen
 │       ├── 0019_plan_zones.sql        # zonas marcadas del plano
-│       └── 0020_zone_description.sql  # descripción de las zonas
+│       ├── 0020_zone_description.sql  # descripción de las zonas
+│       └── 0021_style_materials.sql   # materiales para estilos (manteles compartidos)
 ├── scripts/
 │   ├── seed.mjs                    # datos de ejemplo
 │   ├── test-migrations.mjs         # las migraciones, probadas en PostgreSQL (WASM)
@@ -1170,6 +1172,19 @@ En el panel del editor cada estilo aparece bajo su material con sus existencias
 objeto ya colocado se cambia desde el inspector.
 
 Los estilos se dan de alta dentro del material, en **Almacén → Material → Editar**.
+
+#### Materiales para estilos (compartidos entre objetos)
+Si lo que se pone va en objetos distintos —6 manteles «UCAM Esports», cinco en mesas plegables y
+uno en el mostrador—, se da de alta una vez en **Almacén → Para estilos** con sus unidades, y el
+estilo de cada objeto se **enlaza** a él (en el estilo: *Cuenta como material aparte* → *Material
+del almacén*). Desde ahí también se puede crear el material sin salir del estilo, con su nombre y
+sus unidades ya puestos.
+
+Con el enlace, todos los estilos enlazados piden **ese mismo material** en una sola línea del
+listado y restan de sus mismas existencias: cinco mesas y un mostrador con el mantel UCAM piden
+6 «Mantel UCAM Esports» de los 6 que hay. En el panel del editor, los estilos enlazados muestran lo
+que queda del material compartido. Un estilo sin enlazar sigue contando sus propias unidades, y
+si se borra el material, sus estilos se quedan sin enlace (no se borran).
 
 ### Almacén, cajas y categorías
 Inventario global con búsqueda, filtros, ordenación, foto remota, ubicación y código interno.

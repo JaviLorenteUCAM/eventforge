@@ -95,6 +95,7 @@ const FILES = [
   '0018_background_model_adjust.sql',
   '0019_plan_zones.sql',
   '0020_zone_description.sql',
+  '0021_style_materials.sql',
 ];
 let allOk = true;
 
@@ -489,6 +490,49 @@ await mustFail(
   'Dos estilos del mismo material no pueden llamarse igual',
   `insert into public.warehouse_item_variants (item_id, name) values ('${itemId}', 'Mantel rojo')`,
 );
+
+// Materiales para estilos (0021): el mismo mantel en una mesa y en un mostrador.
+{
+  const counterId = crypto.randomUUID();
+  const smId = crypto.randomUUID();
+  await db.exec(`
+    insert into public.warehouse_items (id, name, quantity, unit, length_m, width_m, height_m, kind, shape, color)
+    values ('${counterId}', 'Mostrador de pruebas', 1, 'ud', 1.5, 0.6, 1.1, 'furniture', 'box', '#777777');
+    insert into public.style_materials (id, name, quantity, unit) values ('${smId}', 'Mantel UCAM Esports', 6, 'ud');
+    update public.warehouse_item_variants set style_material_id = '${smId}'
+     where id = '33333333-3333-4333-8333-333333333333';
+    insert into public.warehouse_item_variants (id, item_id, name, adds_material, style_material_id)
+    values ('55555555-5555-4555-8555-555555555555', '${counterId}', 'Mantel UCAM Esports', true, '${smId}');
+  `);
+  const linked = await db.query(
+    `select count(distinct item_id)::int as n from public.warehouse_item_variants where style_material_id = '${smId}'`,
+  );
+  console.log(
+    linked.rows[0].n === 2
+      ? '  [32m✓[0m Un material para estilos se enlaza desde estilos de objetos distintos'
+      : '  [31m✗[0m El material para estilos no se enlaza desde dos objetos',
+  );
+  await mustFail(
+    'Un material para estilos con unidades negativas se rechaza',
+    `insert into public.style_materials (name, quantity) values ('Funda rota', -1)`,
+  );
+  await mustFail(
+    'Dos materiales para estilos no pueden llamarse igual',
+    `insert into public.style_materials (name) values ('Mantel UCAM Esports')`,
+  );
+  await db.exec(`delete from public.style_materials where id = '${smId}'`);
+  const left = await db.query(
+    `select count(*)::int as n from public.warehouse_item_variants
+      where id in ('33333333-3333-4333-8333-333333333333','55555555-5555-4555-8555-555555555555')
+        and style_material_id is null`,
+  );
+  console.log(
+    left.rows[0].n === 2
+      ? '  [32m✓[0m Al borrar el material, sus estilos se quedan sin enlace (no se borran)'
+      : '  [31m✗[0m Borrar el material para estilos no deja los estilos como estaban',
+  );
+  await db.exec(`delete from public.warehouse_item_variants where id = '55555555-5555-4555-8555-555555555555'`);
+}
 
 // El modo volumen (0014) se admite en las tres tablas con textura.
 try {

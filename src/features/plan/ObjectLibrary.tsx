@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, Network, Package, Plus, Shapes, Warehouse, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Modal, SearchInput, Segmented, Select } from '@/components/ui';
-import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
+import {
+  useCatalog,
+  useCategories,
+  useItemVariants,
+  useStyleMaterials,
+  useWarehouseItems,
+} from '@/data/warehouse';
 import { CatalogObjectModal } from '@/features/warehouse/CatalogObjectModal';
 import { ItemFormModal } from '@/features/warehouse/ItemsTab';
 import { DROP_TYPE } from './Editor2D';
@@ -63,6 +69,7 @@ export function ObjectLibrary({
   const categories = useCategories();
   const items = useWarehouseItems();
   const variants = useItemVariants();
+  const styleMaterials = useStyleMaterials();
 
   const [origin, setOrigin] = useState<'warehouse' | 'event'>('warehouse');
   const [search, setSearch] = useState('');
@@ -83,8 +90,8 @@ export function ObjectLibrary({
   );
 
   const variantStock = useMemo(
-    () => computeVariantStock(variants.data ?? [], planObjects),
-    [variants.data, planObjects],
+    () => computeVariantStock(variants.data ?? [], planObjects, styleMaterials.data ?? []),
+    [variants.data, planObjects, styleMaterials.data],
   );
 
   /** Estilos de cada material, en el orden en que se dieron de alta. */

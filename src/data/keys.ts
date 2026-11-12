@@ -18,6 +18,7 @@ export const qk = {
 
   warehouseItems: ['warehouse-items'] as const,
   itemVariants: ['warehouse-item-variants'] as const,
+  styleMaterials: ['style-materials'] as const,
   warehouseBoxes: ['warehouse-boxes'] as const,
   warehouseBoxItems: ['warehouse-box-items'] as const,
 

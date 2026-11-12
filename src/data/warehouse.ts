@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CatalogObject,
   MaterialCategory,
+  StyleMaterial,
   WarehouseBox,
   WarehouseBoxItem,
   WarehouseItem,
@@ -158,6 +159,43 @@ export function useDeleteVariant() {
   return useMutation({
     mutationFn: (id: string) => deleteRow('warehouse_item_variants', id),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.itemVariants });
+    },
+  });
+}
+
+// --- Materiales para estilos ----------------------------------------------
+// Manteles, fundas… con unidades compartidas entre los estilos enlazados.
+export function useStyleMaterials() {
+  return useQuery({
+    queryKey: qk.styleMaterials,
+    queryFn: () =>
+      selectAll<StyleMaterial>('style_materials', (q) =>
+        q.order('sort_order', { ascending: true }).order('name', { ascending: true }),
+      ),
+  });
+}
+
+export function useUpsertStyleMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id?: string; values: Partial<StyleMaterial> }) =>
+      input.id
+        ? updateRow<StyleMaterial>('style_materials', input.id, input.values)
+        : insertRow<StyleMaterial>('style_materials', input.values),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.styleMaterials });
+    },
+  });
+}
+
+export function useDeleteStyleMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRow('style_materials', id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.styleMaterials });
+      // Los estilos enlazados se quedan sin enlace (ON DELETE SET NULL).
       void qc.invalidateQueries({ queryKey: qk.itemVariants });
     },
   });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Palette, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Link2, Palette, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Badge,
@@ -13,19 +13,26 @@ import {
   NumberInput,
   Select,
 } from '@/components/ui';
-import { useDeleteVariant, useItemVariants, useUpsertVariant } from '@/data/warehouse';
+import {
+  useDeleteVariant,
+  useItemVariants,
+  useStyleMaterials,
+  useUpsertStyleMaterial,
+  useUpsertVariant,
+  useWarehouseItems,
+} from '@/data/warehouse';
 import { BUCKETS, resolveUrl } from '@/lib/storage';
 import { fmtNum } from '@/lib/utils';
-import type { TextureMode, Unit, WarehouseItem, WarehouseItemVariant } from '@/lib/types';
+import type {
+  StyleMaterial,
+  TextureMode,
+  Unit,
+  WarehouseItem,
+  WarehouseItemVariant,
+} from '@/lib/types';
 import { TextureSection, type TextureFields } from './TextureSection';
+import { UNITS } from './units';
 
-const UNITS: { value: Unit; label: string }[] = [
-  { value: 'ud', label: 'unidades' },
-  { value: 'm', label: 'metros' },
-  { value: 'kg', label: 'kilos' },
-  { value: 'l', label: 'litros' },
-  { value: 'pack', label: 'packs' },
-];
 
 /**
  * ESTILOS DE UN MATERIAL
@@ -38,9 +45,16 @@ const UNITS: { value: Unit; label: string }[] = [
  *     SÍ añade material: además de la mesa hay que cargar el mantel.
  *
  * Esa diferencia es la casilla «cuenta como material aparte».
+ *
+ * Y si lo que se pone (el mantel UCAM) va también en otros objetos —cinco
+ * mesas y un mostrador—, el estilo se ENLAZA a un material para estilos del
+ * almacén: todos los estilos enlazados piden ese mismo material y restan de
+ * sus mismas existencias.
  */
 export function VariantsSection({ item }: { item: WarehouseItem | null }) {
   const variants = useItemVariants();
+  const styleMaterials = useStyleMaterials();
+  const materialById = new Map((styleMaterials.data ?? []).map((m) => [m.id, m]));
   const remove = useDeleteVariant();
 
   const [editing, setEditing] = useState<WarehouseItemVariant | null>(null);
@@ -104,6 +118,7 @@ export function VariantsSection({ item }: { item: WarehouseItem | null }) {
               key={v.id}
               variant={v}
               item={item}
+              linked={v.style_material_id ? (materialById.get(v.style_material_id) ?? null) : null}
               onEdit={() => setEditing(v)}
               onDelete={() => setToDelete(v)}
             />
@@ -141,11 +156,13 @@ export function VariantsSection({ item }: { item: WarehouseItem | null }) {
 function VariantRow({
   variant,
   item,
+  linked,
   onEdit,
   onDelete,
 }: {
   variant: WarehouseItemVariant;
   item: WarehouseItem;
+  linked: StyleMaterial | null;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -173,14 +190,24 @@ function VariantRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] text-ink">{variant.name}</p>
         <p className="num truncate text-[11px] text-dim">
-          {fmtNum(Number(variant.quantity), 0)} {item.unit}
-          {variant.adds_material
-            ? ` · suma «${variant.material_name.trim() || variant.name}» al material`
-            : ''}
+          {linked
+            ? `usa «${linked.name}» · ${fmtNum(Number(linked.quantity), 0)} ${linked.unit} en el almacén`
+            : `${fmtNum(Number(variant.quantity), 0)} ${item.unit}${
+                variant.adds_material
+                  ? ` · suma «${variant.material_name.trim() || variant.name}» al material`
+                  : ''
+              }`}
         </p>
       </div>
 
-      {variant.adds_material ? <Badge color="#34d399">material aparte</Badge> : null}
+      {linked ? (
+        <Badge color="#38bdf8">
+          <Link2 className="mr-1 inline size-3" />
+          enlazado
+        </Badge>
+      ) : variant.adds_material ? (
+        <Badge color="#34d399">material aparte</Badge>
+      ) : null}
 
       <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
         <button
@@ -213,6 +240,8 @@ const EMPTY = {
   adds_material: false,
   material_name: '',
   material_unit: 'ud' as Unit,
+  /** '' = sin enlazar (sus propias unidades); NEW = crear uno al guardar. */
+  style_material_id: '',
   texture_mode: 'atlas' as TextureMode,
   texture_scale: 1,
   texture_offset_x: 0,
@@ -223,6 +252,9 @@ const EMPTY = {
   texture_floor_offset: 0,
   notes: '',
 };
+
+/** Valor del selector para «crear un material para estilos nuevo». */
+const NEW_MATERIAL = '__new__';
 
 function VariantModal({
   open,
@@ -236,7 +268,13 @@ function VariantModal({
   onClose: () => void;
 }) {
   const save = useUpsertVariant();
+  const saveMaterial = useUpsertStyleMaterial();
+  const styleMaterials = useStyleMaterials();
+  const allVariants = useItemVariants();
+  const items = useWarehouseItems();
   const [form, setForm] = useState(EMPTY);
+  /** Material nuevo que se crea al guardar el estilo (y se enlaza). */
+  const [newMaterial, setNewMaterial] = useState({ name: '', quantity: 1, unit: 'ud' as Unit });
   const [texturePath, setTexturePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,6 +289,7 @@ function VariantModal({
             adds_material: variant.adds_material,
             material_name: variant.material_name,
             material_unit: variant.material_unit,
+            style_material_id: variant.style_material_id ?? '',
             texture_mode: variant.texture_mode,
             texture_scale: Number(variant.texture_scale),
             texture_offset_x: Number(variant.texture_offset_x),
@@ -264,14 +303,56 @@ function VariantModal({
         : EMPTY,
     );
     setTexturePath(variant?.texture_path ?? null);
+    setNewMaterial({ name: '', quantity: 1, unit: 'ud' });
     setError(null);
   }, [open, variant]);
+
+  const linkedMaterial =
+    form.style_material_id && form.style_material_id !== NEW_MATERIAL
+      ? (styleMaterials.data ?? []).find((m) => m.id === form.style_material_id) ?? null
+      : null;
+  /** Los otros estilos (de cualquier material) enlazados al mismo. */
+  const sharedWith = linkedMaterial
+    ? (allVariants.data ?? [])
+        .filter((v) => v.style_material_id === linkedMaterial.id && v.id !== variant?.id)
+        .map((v) => `${items.data?.find((i) => i.id === v.item_id)?.name ?? 'Material'} · ${v.name}`)
+    : [];
+
+  function pickMaterial(value: string) {
+    if (value === NEW_MATERIAL) {
+      // Se propone con lo que ya tiene el estilo: su nombre en el listado y
+      // sus unidades.
+      setNewMaterial({
+        name: form.material_name.trim() || form.name.trim(),
+        quantity: form.quantity,
+        unit: form.material_unit,
+      });
+    }
+    setForm({ ...form, style_material_id: value });
+  }
 
   async function submit() {
     if (!form.name.trim()) return setError('El estilo necesita un nombre.');
     if (form.quantity < 0) return setError('Las unidades no pueden ser negativas.');
+    const creating = form.adds_material && form.style_material_id === NEW_MATERIAL;
+    if (creating && !newMaterial.name.trim()) {
+      return setError('Ponle nombre al material para estilos nuevo.');
+    }
 
     try {
+      // Primero el material nuevo, si se ha pedido, para poder enlazarlo.
+      let linkId: string | null = form.adds_material ? form.style_material_id || null : null;
+      if (creating) {
+        const created = await saveMaterial.mutateAsync({
+          values: {
+            name: newMaterial.name.trim(),
+            quantity: newMaterial.quantity,
+            unit: newMaterial.unit,
+            category_id: item.category_id ?? null,
+          },
+        });
+        linkId = created.id;
+      }
       await save.mutateAsync({
         id: variant?.id,
         values: {
@@ -280,13 +361,19 @@ function VariantModal({
           name: form.name.trim(),
           color: form.color || null,
           material_name: form.material_name.trim(),
+          style_material_id: linkId,
           texture_path: texturePath,
         },
       });
       toast.success(variant ? 'Estilo actualizado' : 'Estilo añadido');
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se ha podido guardar');
+      const msg = err instanceof Error ? err.message : '';
+      toast.error(
+        /style_materials_unique_name/.test(msg)
+          ? 'Ya hay un material para estilos con ese nombre: elígelo en la lista.'
+          : msg || 'No se ha podido guardar',
+      );
     }
   }
 
@@ -302,7 +389,11 @@ function VariantModal({
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" loading={save.isPending} onClick={() => void submit()}>
+          <Button
+            variant="primary"
+            loading={save.isPending || saveMaterial.isPending}
+            onClick={() => void submit()}
+          >
             Guardar
           </Button>
         </>
@@ -318,18 +409,26 @@ function VariantModal({
           />
         </Field>
 
-        <Field
-          label="Unidades de este estilo"
-          required
-          hint={`De «${item.name}» hay ${fmtNum(Number(item.quantity), 0)} ${item.unit} en total.`}
-        >
-          <NumberInput
-            value={form.quantity}
-            onChange={(v) => setForm({ ...form, quantity: v })}
-            step={1}
-            min={0}
-          />
-        </Field>
+        {linkedMaterial && form.adds_material ? (
+          <Field label="Unidades" hint="Las pone el material enlazado (abajo).">
+            <p className="num rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px] text-ink">
+              {fmtNum(Number(linkedMaterial.quantity), 0)} {linkedMaterial.unit} de «{linkedMaterial.name}»
+            </p>
+          </Field>
+        ) : (
+          <Field
+            label="Unidades de este estilo"
+            required
+            hint={`De «${item.name}» hay ${fmtNum(Number(item.quantity), 0)} ${item.unit} en total.`}
+          >
+            <NumberInput
+              value={form.quantity}
+              onChange={(v) => setForm({ ...form, quantity: v })}
+              step={1}
+              min={0}
+            />
+          </Field>
+        )}
 
         <Field label="Color en el plano" hint="Vacío = el mismo color que el material.">
           <div className="flex items-center gap-2">
@@ -362,6 +461,71 @@ function VariantModal({
           </p>
 
           {form.adds_material ? (
+            <div className="mt-3">
+              <Field
+                label="Material del almacén"
+                hint="Enlázalo si el mismo material va también en otros objetos (el mantel en las mesas y en el mostrador): todos restan de sus mismas unidades."
+              >
+                <Select value={form.style_material_id} onChange={(e) => pickMaterial(e.target.value)}>
+                  <option value="">Solo este estilo (con sus propias unidades)</option>
+                  {(styleMaterials.data ?? []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {fmtNum(Number(m.quantity), 0)} {m.unit}
+                    </option>
+                  ))}
+                  <option value={NEW_MATERIAL}>+ Crear un material para estilos nuevo…</option>
+                </Select>
+              </Field>
+              {linkedMaterial ? (
+                <p className="mt-2 flex items-start gap-1.5 text-[11.5px] leading-relaxed text-muted">
+                  <Link2 className="mt-0.5 size-3.5 shrink-0 text-accent-soft" />
+                  <span>
+                    En el listado sale como «{linkedMaterial.name}» y resta de sus{' '}
+                    {fmtNum(Number(linkedMaterial.quantity), 0)} {linkedMaterial.unit}
+                    {sharedWith.length
+                      ? `, compartidas con: ${sharedWith.join(', ')}.`
+                      : '. Enlaza el mismo material desde otros estilos para compartirlas.'}
+                  </span>
+                </p>
+              ) : null}
+              {form.style_material_id === NEW_MATERIAL ? (
+                <div className="mt-3 grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-3">
+                  <Field label="Nombre del material" className="sm:col-span-3">
+                    <Input
+                      value={newMaterial.name}
+                      onChange={(e) => setNewMaterial({ ...newMaterial, name: e.target.value })}
+                      placeholder="Mantel UCAM Esports"
+                    />
+                  </Field>
+                  <Field label="Unidades en el almacén" className="sm:col-span-2">
+                    <NumberInput
+                      value={newMaterial.quantity}
+                      onChange={(v) => setNewMaterial({ ...newMaterial, quantity: v })}
+                      step={1}
+                      min={0}
+                    />
+                  </Field>
+                  <Field label="Unidad">
+                    <Select
+                      value={newMaterial.unit}
+                      onChange={(e) => setNewMaterial({ ...newMaterial, unit: e.target.value as Unit })}
+                    >
+                      {UNITS.map((u) => (
+                        <option key={u.value} value={u.value}>
+                          {u.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <p className="text-[11.5px] leading-relaxed text-dim sm:col-span-3">
+                    Se crea en Almacén → Para estilos al guardar el estilo, y queda enlazado.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {form.adds_material && !form.style_material_id ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Cómo se llama en el listado" hint="Vacío = el nombre del estilo.">
                 <Input

@@ -387,8 +387,35 @@ export interface WarehouseItemVariant {
   /** Con qué nombre aparece ahí. Vacío = el del estilo. */
   material_name: string;
   material_unit: Unit;
+  /**
+   * Material para estilos al que está enlazado (el mantel que se pone). Con
+   * enlace, lo que añade al listado es ESE material, con sus unidades
+   * compartidas con cualquier otro estilo enlazado a él.
+   */
+  style_material_id: string | null;
   sort_order: number;
   notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * MATERIAL PARA ESTILOS
+ *
+ * Lo que llevan puesto los objetos con estilo: manteles, fundas, vinilos. Se da
+ * de alta en el almacén con sus unidades y lo comparten los estilos de objetos
+ * distintos: el mismo mantel en cinco mesas y en un mostrador resta de las
+ * mismas existencias.
+ */
+export interface StyleMaterial {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: Unit;
+  category_id: string | null;
+  color: string | null;
+  notes: string;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
@@ -573,6 +600,8 @@ export interface MaterialNeed {
   warehouseItemId: string | null;
   /** Si la línea sale de un estilo (un mantel, una funda), cuál. */
   variantId?: string | null;
+  /** Si la línea es un material para estilos (compartido entre estilos), cuál. */
+  styleMaterialId?: string | null;
   /**
    * Si la línea es de cableado, de qué tipo. Esas líneas no llevan cantidades:
    * solo dicen que hace falta ese cableado.

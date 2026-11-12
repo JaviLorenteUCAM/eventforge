@@ -4,6 +4,7 @@ import type {
   PlanConnection,
   PlanObject,
   StockInfo,
+  StyleMaterial,
   WarehouseItem,
   WarehouseItemVariant,
 } from './types';
@@ -32,6 +33,13 @@ import { normalize, round } from './utils';
  *   · los estilos marcados como «material aparte» añaden su propia línea al
  *     listado: tres mesas, dos con mantel negro y una con rojo, piden 3 mesas,
  *     2 manteles negros y 1 mantel rojo.
+ *
+ * MATERIALES PARA ESTILOS
+ * -----------------------
+ * Un estilo puede enlazarse a un material para estilos del almacén (el mantel
+ * UCAM). Entonces su línea es la de ESE material, y todos los estilos
+ * enlazados a él —de la mesa plegable, del mostrador— suman en ella y restan
+ * de sus mismas existencias.
  */
 
 /** Unidades de cada artículo del almacén ya comprometidas en el plano. */
@@ -54,19 +62,43 @@ export function computeStock(
   return stock;
 }
 
-/** Lo mismo, pero por estilo: «quedan 2 de las 6 mesas con mantel negro». */
+/**
+ * Lo mismo, pero por estilo: «quedan 2 de las 6 mesas con mantel negro».
+ *
+ * Un estilo enlazado a un material para estilos da las existencias de ese
+ * material, descontando lo que ya llevan TODOS los estilos enlazados a él
+ * (el mantel puesto en el mostrador también cuenta para las mesas).
+ */
 export function computeVariantStock(
   variants: WarehouseItemVariant[],
   planObjects: PlanObject[],
+  styleMaterials: StyleMaterial[] = [],
 ): Map<string, StockInfo> {
+  const materialById = new Map(styleMaterials.map((m) => [m.id, m]));
+  const linkOf = new Map(
+    variants
+      .filter((v) => v.style_material_id && materialById.has(v.style_material_id))
+      .map((v) => [v.id, v.style_material_id as string]),
+  );
+
   const used = new Map<string, number>();
+  const usedMaterial = new Map<string, number>();
   for (const o of planObjects) {
     if (!o.variant_id) continue;
     used.set(o.variant_id, (used.get(o.variant_id) ?? 0) + 1);
+    const m = linkOf.get(o.variant_id);
+    if (m) usedMaterial.set(m, (usedMaterial.get(m) ?? 0) + 1);
   }
 
   const stock = new Map<string, StockInfo>();
   for (const v of variants) {
+    const m = linkOf.get(v.id);
+    if (m) {
+      const total = Number(materialById.get(m)?.quantity) || 0;
+      const u = usedMaterial.get(m) ?? 0;
+      stock.set(v.id, { total, used: u, available: total - u });
+      continue;
+    }
     const total = Number(v.quantity) || 0;
     const u = used.get(v.id) ?? 0;
     stock.set(v.id, { total, used: u, available: total - u });
@@ -80,10 +112,12 @@ export function computeMaterialNeeds(
   catalog: CatalogObject[],
   items: WarehouseItem[],
   variants: WarehouseItemVariant[] = [],
+  styleMaterials: StyleMaterial[] = [],
 ): MaterialNeed[] {
   const itemById = new Map(items.map((i) => [i.id, i]));
   const catalogById = new Map(catalog.map((c) => [c.id, c]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
+  const styleMaterialById = new Map(styleMaterials.map((m) => [m.id, m]));
 
   const byName = new Map<string, WarehouseItem[]>();
   for (const it of items) {
@@ -148,7 +182,28 @@ export function computeMaterialNeeds(
 
     // El estilo puede ser algo que haya que llevar aparte: el mantel de la
     // mesa es un bulto más, el dibujo del photocall no.
-    if (variant?.adds_material) {
+    const linked = variant?.style_material_id
+      ? styleMaterialById.get(variant.style_material_id)
+      : undefined;
+    if (linked) {
+      // Enlazado a un material para estilos: una sola línea para ese material,
+      // venga del objeto que venga.
+      const extraKey = `style:${linked.id}`;
+      add(
+        extraKey,
+        {
+          key: extraKey,
+          name: linked.name,
+          catalogId: null,
+          categoryId: linked.category_id ?? item?.category_id ?? null,
+          unit: linked.unit ?? 'ud',
+          warehouseItemId: null,
+          styleMaterialId: linked.id,
+        },
+        1,
+        0,
+      );
+    } else if (variant?.adds_material) {
       const extraKey = `variant:${variant.id}`;
       add(
         extraKey,
@@ -196,7 +251,10 @@ export function computeMaterialNeeds(
       if (need.cabling) return need;
       let available = 0;
 
-      if (need.variantId) {
+      if (need.styleMaterialId) {
+        // Las del material para estilos, compartidas por todos sus estilos.
+        available = Number(styleMaterialById.get(need.styleMaterialId)?.quantity ?? 0);
+      } else if (need.variantId) {
         // Las unidades de un estilo son suyas: seis manteles negros no cubren
         // la necesidad de uno rojo.
         available = Number(variantById.get(need.variantId)?.quantity ?? 0);

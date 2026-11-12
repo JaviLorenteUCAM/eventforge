@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Boxes, Package, Shapes, Tags } from 'lucide-react';
+import { Boxes, Package, Shapes, Shirt, Tags } from 'lucide-react';
 import { Page, PageHeader } from '@/components/layout/PageHeader';
 import { Segmented } from '@/components/ui';
 import { useRealtime } from '@/data/realtime';
@@ -8,8 +8,9 @@ import { ItemsTab } from './ItemsTab';
 import { BoxesTab } from './BoxesTab';
 import { CategoriesTab } from './CategoriesTab';
 import { LibraryTab } from './LibraryTab';
+import { StyleMaterialsTab } from './StyleMaterialsTab';
 
-type Tab = 'items' | 'boxes' | 'library' | 'categories';
+type Tab = 'items' | 'styles' | 'boxes' | 'library' | 'categories';
 
 export function WarehousePage() {
   const [tab, setTab] = useState<Tab>('items');
@@ -20,6 +21,7 @@ export function WarehousePage() {
     { table: 'warehouse_box_items', invalidate: [qk.warehouseBoxItems] },
     { table: 'object_catalog', invalidate: [qk.catalog] },
     { table: 'warehouse_item_variants', invalidate: [qk.itemVariants] },
+    { table: 'style_materials', invalidate: [qk.styleMaterials] },
   ]);
 
   return (
@@ -33,6 +35,7 @@ export function WarehousePage() {
             onChange={setTab}
             options={[
               { value: 'items', label: 'Material', icon: <Package className="size-3.5" /> },
+              { value: 'styles', label: 'Para estilos', icon: <Shirt className="size-3.5" /> },
               { value: 'boxes', label: 'Cajas', icon: <Boxes className="size-3.5" /> },
               { value: 'library', label: 'Biblioteca', icon: <Shapes className="size-3.5" /> },
               { value: 'categories', label: 'Categorías', icon: <Tags className="size-3.5" /> },
@@ -42,6 +45,7 @@ export function WarehousePage() {
       />
 
       {tab === 'items' ? <ItemsTab /> : null}
+      {tab === 'styles' ? <StyleMaterialsTab /> : null}
       {tab === 'boxes' ? <BoxesTab /> : null}
       {tab === 'library' ? <LibraryTab /> : null}
       {tab === 'categories' ? <CategoriesTab /> : null}

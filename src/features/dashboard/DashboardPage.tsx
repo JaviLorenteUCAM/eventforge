@@ -30,7 +30,13 @@ import {
 import { useEvents } from '@/data/events';
 import { useTasks } from '@/data/tasks';
 import { useScheduleActivities, useScheduleDays } from '@/data/schedule';
-import { useBoxes, useCatalog, useWarehouseItems } from '@/data/warehouse';
+import {
+  useBoxes,
+  useCatalog,
+  useItemVariants,
+  useStyleMaterials,
+  useWarehouseItems,
+} from '@/data/warehouse';
 import { usePlanConnections, usePlanObjects, usePlans } from '@/data/plans';
 import { useProfileMap } from '@/data/profiles';
 import { useRealtime } from '@/data/realtime';
@@ -308,6 +314,8 @@ function FocusPanels({ event, catalogReady }: { event: EventRow; catalogReady: b
   const connections = usePlanConnections(planId);
   const items = useWarehouseItems();
   const catalog = useCatalog();
+  const variants = useItemVariants();
+  const styleMaterials = useStyleMaterials();
 
   const issues = useMemo(
     () => analyzePlan(objects.data ?? [], connections.data ?? []),
@@ -322,9 +330,11 @@ function FocusPanels({ event, catalogReady }: { event: EventRow; catalogReady: b
             connections.data ?? [],
             catalog.data ?? [],
             items.data ?? [],
+            variants.data ?? [],
+            styleMaterials.data ?? [],
           )
         : [],
-    [objects.data, connections.data, catalog.data, items.data, catalogReady],
+    [objects.data, connections.data, catalog.data, items.data, variants.data, styleMaterials.data, catalogReady],
   );
   const summary = summarizeMaterial(needs);
   const missing = needs.filter((n) => n.missing > 0);

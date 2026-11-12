@@ -46,7 +46,7 @@ import {
   useSnapshots,
   useUpdatePlan,
 } from '@/data/plans';
-import { useCatalog, useCategories, useItemVariants, useWarehouseItems } from '@/data/warehouse';
+import { useCatalog, useCategories, useItemVariants, useStyleMaterials, useWarehouseItems } from '@/data/warehouse';
 import { useEvent } from '@/data/events';
 import { useCreateZone, useDeleteZone, usePlanZones, useUpdateZone } from '@/data/zones';
 import { useRealtime } from '@/data/realtime';
@@ -161,6 +161,7 @@ export function PlanPage() {
   const categories = useCategories();
   const items = useWarehouseItems();
   const variants = useItemVariants();
+  const styleMaterials = useStyleMaterials();
   const updatePlan = useUpdatePlan();
   const snapshots = useSnapshots(eventId);
   const createSnapshot = useCreateSnapshot();
@@ -329,13 +330,21 @@ export function PlanPage() {
         catalog.data ?? [],
         items.data ?? [],
         variants.data ?? [],
+        styleMaterials.data ?? [],
       ),
-    [objects.data, connections.data, catalog.data, items.data, variants.data],
+    [objects.data, connections.data, catalog.data, items.data, variants.data, styleMaterials.data],
   );
   const needsFor = useCallback(
     (objs: PlanObject[], conns: PlanConnection[]) =>
-      computeMaterialNeeds(objs, conns, catalog.data ?? [], items.data ?? [], variants.data ?? []),
-    [catalog.data, items.data, variants.data],
+      computeMaterialNeeds(
+        objs,
+        conns,
+        catalog.data ?? [],
+        items.data ?? [],
+        variants.data ?? [],
+        styleMaterials.data ?? [],
+      ),
+    [catalog.data, items.data, variants.data, styleMaterials.data],
   );
   const categoryNames = useMemo(
     () => new Map((categories.data ?? []).map((c) => [c.id, c.name])),

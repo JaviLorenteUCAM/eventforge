@@ -26,7 +26,7 @@ import { useEvent, useEventMembers } from '@/data/events';
 import { useTasks } from '@/data/tasks';
 import { useScheduleActivities, useScheduleDays } from '@/data/schedule';
 import { usePlanConnections, usePlanObjects, usePlans } from '@/data/plans';
-import { useCatalog, useItemVariants, useWarehouseItems } from '@/data/warehouse';
+import { useCatalog, useItemVariants, useStyleMaterials, useWarehouseItems } from '@/data/warehouse';
 import { useProfileMap } from '@/data/profiles';
 import { analyzePlan, powerBudget } from '@/lib/issues';
 import { computeMaterialNeeds, summarizeMaterial } from '@/lib/materials';
@@ -48,6 +48,7 @@ export function EventOverviewPage() {
   const catalog = useCatalog();
   const items = useWarehouseItems();
   const variants = useItemVariants();
+  const styleMaterials = useStyleMaterials();
 
   const [editOpen, setEditOpen] = useState(false);
 
@@ -64,8 +65,9 @@ export function EventOverviewPage() {
         catalog.data ?? [],
         items.data ?? [],
         variants.data ?? [],
+        styleMaterials.data ?? [],
       ),
-    [objects.data, connections.data, catalog.data, items.data, variants.data],
+    [objects.data, connections.data, catalog.data, items.data, variants.data, styleMaterials.data],
   );
   const material = summarizeMaterial(needs);
 
