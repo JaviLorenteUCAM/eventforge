@@ -474,6 +474,16 @@ export function ExportPlanModal({
           </Field>
           {showcase ? (
             <>
+              <div className="rounded-lg border border-line bg-surface-2 p-2.5">
+                <Checkbox
+                  label="Ver el mobiliario en el plano"
+                  checked={furniture}
+                  onChange={(e) => setFurniture(e.target.checked)}
+                />
+                <p className="mt-1 pl-6 text-[11px] leading-relaxed text-dim">
+                  Se dibuja a escala en el plano, sin listado de material.
+                </p>
+              </div>
               <Field
                 label="Fotos del render"
                 hint={`${renderIds.length} de ${MAX_RENDERS} · en el orden en que las marques${loadingRenders ? ' · preparando…' : ''}`}
@@ -508,11 +518,6 @@ export function ExportPlanModal({
                   placeholder="Detalles del montaje: zonas, horarios, qué se verá…"
                 />
               </Field>
-              <Checkbox
-                label="Mobiliario en el plano"
-                checked={furniture}
-                onChange={(e) => setFurniture(e.target.checked)}
-              />
             </>
           ) : null}
           <Field label="Hoja">

@@ -677,10 +677,12 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
   cy += 3;
 
   // Los objetos solo van en la leyenda si hace falta: con el listado de
-  // material detrás sobran, salvo que estén numerados (los números del plano
-  // necesitan su clave).
+  // material detrás sobran, y en la muestra el mobiliario se ve dibujado pero
+  // no se lista. En ambos casos, salvo que estén numerados (los números del
+  // plano necesitan su clave).
   const withMaterialSheet = d.options.material && (d.input.material?.length ?? 0) > 0;
-  const legend = withMaterialSheet && !d.options.marks ? [] : d.legend;
+  const noList = withMaterialSheet || d.options.document === 'showcase';
+  const legend = noList && !d.options.marks ? [] : d.legend;
 
   // Cabecera de la tabla. Las medidas van debajo del nombre: en una columna
   // aparte, en A4 los nombres se quedaban en «Mesa plega…».
