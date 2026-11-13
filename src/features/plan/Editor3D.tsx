@@ -477,7 +477,7 @@ function Scene({
               />
             ) : null}
             {showZoneLabels ? (
-            <Html position={[c.x, 0.05, c.y]} center occlude={false} style={{ pointerEvents: "none" }}>
+            <Html zIndexRange={[20, 0]} position={[c.x, 0.05, c.y]} center occlude={false} style={{ pointerEvents: "none" }}>
               <span
                 className="whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-semibold text-ink"
                 style={{
@@ -536,7 +536,7 @@ function Scene({
         // Los objetos de tipo texto no tienen volumen: solo rótulo flotante.
         if (o.shape === "text") {
           return (
-            <Html
+            <Html zIndexRange={[20, 0]}
               key={o.id}
               position={[pos.x, Number(o.z) + 0.05, pos.y]}
               center
@@ -661,7 +661,7 @@ function Scene({
             {/* En 3D el punto de luz y el de red llevan su símbolo encima:
                 un cilindro de 40 cm no se distingue de nada más. */}
             {isFeed(o.kind) ? (
-              <Html
+              <Html zIndexRange={[20, 0]}
                 position={[0, realH / 2 + 0.12, 0]}
                 center
                 occlude={false}
@@ -686,7 +686,7 @@ function Scene({
             ) : null}
 
             {showLabels && o.label ? (
-              <Html
+              <Html zIndexRange={[20, 0]}
                 position={[0, realH / 2 + 0.22, 0]}
                 center
                 occlude={false}

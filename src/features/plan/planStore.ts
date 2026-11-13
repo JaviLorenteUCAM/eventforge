@@ -93,7 +93,8 @@ export const usePlanStore = create<PlanEditorState>((set, get) => ({
   linkFrom: null,
 
   showGrid: true,
-  showLabels: true,
+  // Arranca sin etiquetas: el plano se ve más limpio; el ojo de la barra las enseña.
+  showLabels: false,
   showPower: true,
   showNetwork: true,
   showSignal: true,
