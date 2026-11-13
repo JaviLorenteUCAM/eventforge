@@ -10,7 +10,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button, Checkbox, Field, Modal, Segmented, Select } from '@/components/ui';
+import { Button, Checkbox, Field, Modal, Segmented, Select, Textarea } from '@/components/ui';
 import type {
   EventRow,
   MaterialNeed,
@@ -19,7 +19,10 @@ import type {
   PlanConnection,
   PlanObject,
   PlanZone,
+  Snapshot,
 } from '@/lib/types';
+import { BUCKETS, resolveUrl } from '@/lib/storage';
+import { MAX_RENDERS, RenderPicker } from './RenderPicker';
 import { downloadBlob, slugify } from '@/lib/utils';
 import {
   buildDrawing,
@@ -31,7 +34,34 @@ import {
   toSvgPages,
   type ExportOptions,
   type Paper,
+  type RenderPhoto,
 } from './export2d';
+
+/** Largo máximo de la descripción de la muestra. */
+const MAX_DESCRIPTION = 3000;
+
+/**
+ * Una captura lista para ir dentro del PDF: se descarga, se reduce (las
+ * capturas salen a resolución de pantalla, y veinte enteras harían un PDF
+ * enorme) y se incrusta como JPEG.
+ */
+async function embedCapture(url: string): Promise<RenderPhoto> {
+  const blob = await (await fetch(url)).blob();
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+  const width = Math.max(1, Math.round(bmp.width * k));
+  const height = Math.max(1, Math.round(bmp.height * k));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Sin lienzo');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bmp, 0, 0, width, height);
+  bmp.close();
+  return { href: canvas.toDataURL('image/jpeg', 0.88), width, height };
+}
 import { loadFootprint, type Footprint } from './modelFootprint';
 import { pointInPolygon } from '@/lib/silhouette';
 
@@ -56,6 +86,7 @@ export function ExportPlanModal({
   material,
   categoryNames,
   needsFor,
+  snapshots = [],
   author,
 }: {
   open: boolean;
@@ -72,8 +103,54 @@ export function ExportPlanModal({
   categoryNames: Map<string, string>;
   /** Calcula el material de un subconjunto de objetos y cables (para cada zona). */
   needsFor: (objects: PlanObject[], connections: PlanConnection[]) => MaterialNeed[];
+  /** Capturas del evento, para elegir las fotos de la muestra. */
+  snapshots?: Snapshot[];
   author: string;
 }) {
+  /** Plano técnico (con el material) o muestra (plano y fotos del render). */
+  const [docKind, setDocKind] = useState<'technical' | 'showcase'>('technical');
+  const showcase = docKind === 'showcase';
+  const [furniture, setFurniture] = useState(false);
+  const [description, setDescription] = useState('');
+  const [perPage, setPerPage] = useState<'1' | '2' | '4'>('2');
+  const [renderIds, setRenderIds] = useState<string[]>([]);
+  const [renders, setRenders] = useState<RenderPhoto[]>([]);
+  const [loadingRenders, setLoadingRenders] = useState(false);
+  const embedded = useRef(new Map<string, RenderPhoto>());
+
+  // Las capturas del render (las más nuevas primero) y las elegidas, ya
+  // incrustadas y en el orden en que se marcaron.
+  const captures = useMemo(
+    () =>
+      snapshots
+        .filter((s) => s.kind === '3d' || s.kind === '2d')
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    [snapshots],
+  );
+  useEffect(() => {
+    if (!open || !showcase) return;
+    let alive = true;
+    const byId = new Map(captures.map((s) => [s.id, s]));
+    const missing = renderIds.filter((id) => !embedded.current.has(id) && byId.has(id));
+    setLoadingRenders(missing.length > 0);
+    void Promise.all(
+      missing.map(async (id) => {
+        try {
+          const url = await resolveUrl(BUCKETS.captures, byId.get(id)!.storage_path);
+          if (url) embedded.current.set(id, await embedCapture(url));
+        } catch {
+          /* la que no se pueda leer, no sale */
+        }
+      }),
+    ).then(() => {
+      if (!alive) return;
+      setLoadingRenders(false);
+      setRenders(renderIds.map((id) => embedded.current.get(id)).filter((r): r is RenderPhoto => Boolean(r)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, showcase, renderIds, captures]);
   const [paper, setPaper] = useState<Paper>('A3');
   const [scale, setScale] = useState<number | null>(null);
   const [photo, setPhoto] = useState(false);
@@ -195,8 +272,13 @@ export function ExportPlanModal({
               material,
               categoryNames,
               materialByZone,
+              renders: showcase ? renders : [],
             },
             {
+              document: docKind,
+              furniture: showcase ? furniture : true,
+              description: showcase ? description : '',
+              photosPerPage: Number(perPage) as 1 | 2 | 4,
               paper,
               scale,
               photo,
@@ -207,7 +289,7 @@ export function ExportPlanModal({
               zoneNumberSize,
               feeds,
               marks,
-              material: withMaterial,
+              material: withMaterial && !showcase,
               markMissing,
               materialByZone: byZone,
               view,
@@ -216,7 +298,7 @@ export function ExportPlanModal({
         : null,
     [
       open, plan, event, objects, connections, venues, photos, zones, author, material, categoryNames,
-      materialByZone, byZone,
+      materialByZone, byZone, docKind, showcase, furniture, description, perPage, renders,
       paper, scale, photo, cables, venue, showZones, zoneStyle, zoneNumberSize, feeds, marks, withMaterial, markMissing, view,
     ],
   );
@@ -299,7 +381,8 @@ export function ExportPlanModal({
     return () => URL.revokeObjectURL(url);
   }, [pages, shown]);
 
-  const fileName = slugify(`plano ${event?.name ?? ''} ${plan.name}`) || 'plano';
+  const fileName =
+    slugify(`${showcase ? 'muestra' : 'plano'} ${event?.name ?? ''} ${plan.name}`) || 'plano';
 
   function printPdf() {
     if (!pages.length || !sheet) return;
@@ -366,8 +449,72 @@ export function ExportPlanModal({
         </>
       }
     >
-      <div className="grid gap-4 lg:grid-cols-[230px_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[250px_1fr]">
         <div className="space-y-4">
+          <Field
+            label="Documento"
+            hint={
+              showcase
+                ? 'Para enseñar: el plano y las fotos del render, sin listado de material.'
+                : 'Para montar: el plano a escala y el listado de material.'
+            }
+          >
+            <Segmented
+              value={docKind}
+              onChange={(v) => {
+                setDocKind(v);
+                setPage(0);
+              }}
+              layoutId="export-doc-kind"
+              options={[
+                { value: 'technical', label: 'Plano técnico' },
+                { value: 'showcase', label: 'Muestra' },
+              ]}
+            />
+          </Field>
+          {showcase ? (
+            <>
+              <Field
+                label="Fotos del render"
+                hint={`${renderIds.length} de ${MAX_RENDERS} · en el orden en que las marques${loadingRenders ? ' · preparando…' : ''}`}
+              >
+                <RenderPicker
+                  snapshots={captures}
+                  selected={renderIds}
+                  onChange={(ids) => setRenderIds(ids.slice(0, MAX_RENDERS))}
+                />
+              </Field>
+              <Field label="Fotos por hoja">
+                <Segmented
+                  size="sm"
+                  value={perPage}
+                  onChange={setPerPage}
+                  layoutId="export-per-page"
+                  options={[
+                    { value: '1', label: '1' },
+                    { value: '2', label: '2' },
+                    { value: '4', label: '4' },
+                  ]}
+                />
+              </Field>
+              <Field
+                label="Descripción (opcional)"
+                hint={`Va delante de las fotos. ${description.length}/${MAX_DESCRIPTION}`}
+              >
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))}
+                  rows={4}
+                  placeholder="Detalles del montaje: zonas, horarios, qué se verá…"
+                />
+              </Field>
+              <Checkbox
+                label="Mobiliario en el plano"
+                checked={furniture}
+                onChange={(e) => setFurniture(e.target.checked)}
+              />
+            </>
+          ) : null}
           <Field label="Hoja">
             <Segmented
               value={paper}
@@ -438,12 +585,18 @@ export function ExportPlanModal({
               disabled={!objects.some((o) => o.kind === 'power_source' || o.kind === 'network_source')}
               onChange={(e) => setFeeds(e.target.checked)}
             />
-            <Checkbox label="Cableado" checked={cables} onChange={(e) => setCables(e.target.checked)} />
-            <Checkbox
-              label="Numerar los objetos"
-              checked={marks}
-              onChange={(e) => setMarks(e.target.checked)}
-            />
+            {!showcase || furniture ? (
+              <>
+                <Checkbox label="Cableado" checked={cables} onChange={(e) => setCables(e.target.checked)} />
+                <Checkbox
+                  label="Numerar los objetos"
+                  checked={marks}
+                  onChange={(e) => setMarks(e.target.checked)}
+                />
+              </>
+            ) : null}
+            {showcase ? null : (
+            <>
             <Checkbox
               label="Hoja con el material necesario (en el PDF)"
               checked={withMaterial}
@@ -464,6 +617,8 @@ export function ExportPlanModal({
               onChange={(e) => setByZone(e.target.checked)}
               className="pl-6"
             />
+            </>
+            )}
             <Checkbox
               label="Recinto 3D (pilares y cubiertas)"
               checked={venue}
@@ -532,7 +687,7 @@ export function ExportPlanModal({
                 Anterior
               </Button>
               <span className="num">
-                Hoja {shown + 1} de {pages.length} · {shown === 0 ? 'plano' : 'material'}
+                Hoja {shown + 1} de {pages.length} · {shown === 0 ? 'plano' : showcase ? 'muestra' : 'material'}
               </span>
               <Button
                 size="sm"

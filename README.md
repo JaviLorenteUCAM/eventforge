@@ -801,6 +801,14 @@ almacén y lo que falta: las existencias se reparten por orden de zona (y lo de 
 final), así que con 2 PCs y uno en cada una de 5 zonas, la falta sale solo en las zonas 3, 4 y 5; al final, aparte (tras un hueco y una banda oscura, con sus
 columnas y por categorías), el **total del evento** con las existencias.
 
+**Muestra** (en *Documento*, junto a *Plano técnico*): un PDF para enseñar el montaje, sin
+listado de material. Lleva el plano —sin mobiliario salvo que se marque *Mobiliario en el plano*;
+los rótulos, las zonas, el recinto y los puntos de luz y de red se quedan— y detrás las **fotos
+del render** elegidas entre las capturas del evento (**hasta 20**, en el orden en que se marcan;
+1, 2 o 4 por hoja), con una **descripción** opcional delante. Las fotos se reducen y se
+incrustan en el PDF, así que no dependen de enlaces que caduquen. Las capturas se hacen con el
+botón *Captura* del plano, mejor en la vista 3D.
+
 Formatos: **PDF** (por la impresión del navegador, vectorial y a escala exacta: «Guardar como
 PDF» al 100 %), **SVG** y **DXF** para AutoCAD y cualquier programa de CAD, en metros reales y
 por capas (RECINTO, COTAS, OBJETOS, MARCAS, TEXTOS, ZONAS, SUMINISTROS, una por tipo de cable,

@@ -76,6 +76,24 @@ export interface ExportOptions {
    * es lo que permite sacar solo un trozo del plano.
    */
   view?: { cx: number; cy: number } | null;
+  /**
+   * Qué documento: el plano técnico (con el listado de material) o una
+   * MUESTRA para enseñar: el plano y las fotos del render, sin listado.
+   */
+  document?: 'technical' | 'showcase';
+  /** Dibujar el mobiliario en el plano (en la muestra, por defecto no). */
+  furniture?: boolean;
+  /** Texto con detalles, opcional, delante de las fotos de la muestra. */
+  description?: string;
+  /** Fotos del render por hoja en la muestra. */
+  photosPerPage?: 1 | 2 | 4;
+}
+
+/** Una foto del render para la muestra, ya incrustada (data URL) y con su tamaño. */
+export interface RenderPhoto {
+  href: string;
+  width: number;
+  height: number;
 }
 
 export interface ExportInput {
@@ -95,6 +113,8 @@ export interface ExportInput {
   categoryNames?: Map<string, string>;
   /** Material de lo que cae dentro de cada zona (zona null: fuera de todas). */
   materialByZone?: { zone: PlanZone | null; needs: MaterialNeed[] }[];
+  /** Fotos del render elegidas para la muestra, en orden. */
+  renders?: RenderPhoto[];
 }
 
 type Pt = { x: number; y: number };
@@ -168,7 +188,11 @@ export function buildDrawing(input: ExportInput, options: ExportOptions): Drawin
   // como en un plano de arquitectura; la leyenda dice cuántos hay.
   const legendMap = new Map<string, LegendRow>();
   const items: DrawItem[] = [];
+  // Sin mobiliario (la muestra): se quedan los rótulos y líneas del plano y
+  // los puntos de luz y de red, que son de la sala.
+  const withFurniture = options.furniture !== false;
   for (const o of input.objects) {
+    if (!withFurniture && o.shape !== 'text' && o.shape !== 'line' && !FEED.has(o.kind)) continue;
     if (o.shape === 'text' || o.shape === 'line') {
       items.push({ object: o, mark: null, polygon: null, circle: null });
       continue;
@@ -200,7 +224,7 @@ export function buildDrawing(input: ExportInput, options: ExportOptions): Drawin
   }
 
   const byId = new Map(input.objects.map((o) => [o.id, o]));
-  const cables = options.cables
+  const cables = options.cables && withFurniture
     ? input.connections.flatMap((c) => {
         const a = byId.get(c.from_object_id);
         const b = byId.get(c.to_object_id);
@@ -763,7 +787,7 @@ function sideColumn(d: Drawing, sh: Sheet): string[] {
     );
   }
 
-  out.push(...titleBlock(d, sh, 1, 1 + materialPages(d).length, 'PLANO'));
+  out.push(...titleBlock(d, sh, 1, pageCount(d), 'PLANO'));
   return out;
 }
 
@@ -789,7 +813,14 @@ function titleBlock(d: Drawing, sh: Sheet, page: number, pages: number, kind: st
   const generated = `${day(now)} · ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
   const fields: [string, string][] = [
     ['EVENTO', ev?.name ?? '—'],
-    [kind, kind === 'PLANO' ? d.input.plan.name : `Material · ${d.input.plan.name}`],
+    [
+      kind,
+      kind === 'PLANO'
+        ? d.input.plan.name
+        : kind === 'VISTAS'
+          ? `Muestra · ${d.input.plan.name}`
+          : `Material · ${d.input.plan.name}`,
+    ],
     ['LUGAR', ev?.location || '—'],
     ['FECHA EVENTO', eventDate],
     ['GENERADO', generated],
@@ -1163,7 +1194,147 @@ export function materialPages(d: Drawing): string[] {
 
 /** Todas las hojas: el plano y, detrás, las del material. */
 export function toSvgPages(d: Drawing): string[] {
-  return [toSvg(d), ...materialPages(d)];
+  return isShowcase(d) ? [toSvg(d), ...showcasePages(d)] : [toSvg(d), ...materialPages(d)];
+}
+
+const isShowcase = (d: Drawing) => d.options.document === 'showcase';
+
+/** Hojas del documento: el plano y, detrás, las del material o las de la muestra. */
+function pageCount(d: Drawing): number {
+  return 1 + (isShowcase(d) ? showcaseLayout(d).length : materialPages(d).length);
+}
+
+// ---------------------------------------------------------------------------
+// MUESTRA: el plano, la descripción y las fotos del render
+// ---------------------------------------------------------------------------
+
+interface ShowcasePage {
+  /** Líneas de la descripción que van en esta hoja (solo en la primera). */
+  text: string[];
+  /** Índices de las fotos de esta hoja. */
+  photos: number[];
+}
+
+/** Rejilla que deja las fotos más grandes en un hueco dado. */
+function bestGrid(count: number, boxW: number, boxH: number, aspect: number, gap: number) {
+  let best = { cols: 1, rows: count, size: 0 };
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const cw = (boxW - gap * (cols - 1)) / cols;
+    const ch = (boxH - gap * (rows - 1)) / rows;
+    const w = Math.min(cw, ch * aspect);
+    if (w > best.size) best = { cols, rows, size: w };
+  }
+  return best;
+}
+
+const DESC_FONT = 2.6;
+const DESC_LINE = 4.1;
+
+/** Reparto en hojas: la descripción arriba de la primera y las fotos detrás. */
+function showcaseLayout(d: Drawing): ShowcasePage[] {
+  const sh = layoutSheet(d);
+  const photos = d.input.renders ?? [];
+  const per = d.options.photosPerPage ?? 2;
+  const chars = Math.floor((sh.area.w - 16) / (DESC_FONT * 0.5));
+  const raw = (d.options.description ?? '').trim();
+  const text = raw
+    ? raw.split(/\r?\n/).flatMap((para) => (para.trim() ? wrap(para.trim(), chars, 200) : ['']))
+    : [];
+  const pages: ShowcasePage[] = [];
+  const textH = text.length ? 10 + text.length * DESC_LINE : 0;
+  const bodyH = sh.area.h - 26;
+
+  // Si la descripción se come la hoja, va sola; si no, con las primeras fotos
+  // (menos, para que quepan).
+  let i = 0;
+  if (text.length) {
+    if (!photos.length || bodyH - textH < bodyH * 0.45) {
+      pages.push({ text, photos: [] });
+    } else {
+      const first = Math.max(1, Math.min(per, Math.floor(per * ((bodyH - textH) / bodyH)) || 1));
+      pages.push({ text, photos: photos.slice(0, first).map((_, k) => k) });
+      i = first;
+    }
+  }
+  for (; i < photos.length; i += per) {
+    pages.push({ text: [], photos: photos.slice(i, i + per).map((_, k) => i + k) });
+  }
+  return pages;
+}
+
+function showcasePages(d: Drawing): string[] {
+  const layout = showcaseLayout(d);
+  if (!layout.length) return [];
+  const sh = layoutSheet(d);
+  const { x, y, w, h } = sh.area;
+  const photos = d.input.renders ?? [];
+  const total = pageCount(d);
+  const gap = 5;
+
+  return layout.map((pg, p) => {
+    const out: string[] = [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${sh.w}mm" height="${sh.h}mm" viewBox="0 0 ${sh.w} ${sh.h}" font-family="${FONT}">`,
+      `<rect width="${sh.w}" height="${sh.h}" fill="#fff"/>`,
+      `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#000" stroke-width="0.35"/>`,
+      `<text x="${x + 6}" y="${y + 10}" font-size="4.2" font-weight="bold" letter-spacing="0.3">${pg.photos.length ? 'VISTAS DEL MONTAJE' : 'DESCRIPCIÓN'}</text>`,
+      `<text x="${x + 6}" y="${y + 15.5}" font-size="2.4" fill="#555">${esc(d.input.event?.name ?? '')}${d.input.event?.name ? ' · ' : ''}${esc(d.input.plan.name)}${layout.length > 1 ? ` · ${p + 1} de ${layout.length}` : ''}</text>`,
+    ];
+
+    let top = y + 22;
+    if (pg.text.length) {
+      if (pg.photos.length) {
+        out.push(`<text x="${x + 6}" y="${top + 3}" font-size="2.3" font-weight="bold" fill="#333" letter-spacing="0.2">DESCRIPCIÓN</text>`);
+        top += 7;
+      }
+      pg.text.forEach((line, k) => {
+        if (line) {
+          out.push(`<text x="${x + 6}" y="${n(top + 3 + k * DESC_LINE)}" font-size="${DESC_FONT}" fill="#111">${esc(line)}</text>`);
+        }
+      });
+      top += pg.text.length * DESC_LINE + 6;
+    }
+
+    if (pg.photos.length) {
+      const boxX = x + 6;
+      const boxW = w - 12;
+      const boxH = y + h - 6 - top;
+      const list = pg.photos.map((k) => photos[k]);
+      const aspect =
+        list.reduce((s, ph) => s + ph.width / Math.max(1, ph.height), 0) / Math.max(1, list.length);
+      const g = bestGrid(list.length, boxW, boxH, aspect, gap);
+      const cw = (boxW - gap * (g.cols - 1)) / g.cols;
+      const ch = (boxH - gap * (g.rows - 1)) / g.rows;
+      // La rejilla se centra en el hueco que queda.
+      const usedH = g.rows * ch + gap * (g.rows - 1);
+      list.forEach((ph, k) => {
+        const c = k % g.cols;
+        const r = Math.floor(k / g.cols);
+        const a = ph.width / Math.max(1, ph.height);
+        const iw = Math.min(cw, ch * a);
+        const ih = iw / a;
+        const ix = boxX + c * (cw + gap) + (cw - iw) / 2;
+        const iy = top + (boxH - usedH) / 2 + r * (ch + gap) + (ch - ih) / 2;
+        out.push(
+          `<image x="${n(ix)}" y="${n(iy)}" width="${n(iw)}" height="${n(ih)}" preserveAspectRatio="xMidYMid meet" href="${ph.href}" xlink:href="${ph.href}"/>`,
+          `<rect x="${n(ix)}" y="${n(iy)}" width="${n(iw)}" height="${n(ih)}" fill="none" stroke="#000" stroke-width="0.2"/>`,
+        );
+      });
+    }
+
+    // Columna lateral: lo que hay en la muestra y el cajetín.
+    const sd = sh.side;
+    out.push(
+      `<rect x="${sd.x}" y="${sd.y}" width="${sd.w}" height="${sd.h}" fill="none" stroke="#000" stroke-width="0.35"/>`,
+      `<text x="${sd.x + 4}" y="${sd.y + 7}" font-size="3" font-weight="bold" letter-spacing="0.3">MUESTRA</text>`,
+      `<text x="${sd.x + 4}" y="${sd.y + 14}" font-size="2" fill="#555">Vistas</text>`,
+      `<text x="${sd.x + 4}" y="${sd.y + 17.4}" font-size="2.6" font-weight="bold">${photos.length}</text>`,
+    );
+    out.push(...titleBlock(d, sh, p + 2, total, 'VISTAS'));
+    out.push(`</svg>`);
+    return out.join('\n');
+  });
 }
 
 

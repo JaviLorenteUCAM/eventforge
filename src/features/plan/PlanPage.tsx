@@ -1917,6 +1917,7 @@ export function PlanPage() {
         material={materialNeeds}
         categoryNames={categoryNames}
         needsFor={needsFor}
+        snapshots={snapshots.data ?? []}
         author={profile?.name ?? ''}
       />
 
