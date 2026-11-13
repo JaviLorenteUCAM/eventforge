@@ -10,7 +10,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button, Checkbox, Field, Modal, Segmented, Select, Textarea } from '@/components/ui';
+import { Button, Checkbox, Field, Input, Modal, Segmented, Select, Textarea } from '@/components/ui';
 import type {
   EventRow,
   MaterialNeed,
@@ -36,6 +36,15 @@ import {
   type Paper,
   type RenderPhoto,
 } from './export2d';
+
+/** ISO -> valor de un <input type="datetime-local">, en hora local. */
+function toLocalInput(iso: string | null | undefined) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /** Largo máximo de la descripción de la muestra. */
 const MAX_DESCRIPTION = 3000;
@@ -114,6 +123,21 @@ export function ExportPlanModal({
   const [description, setDescription] = useState('');
   const [perPage, setPerPage] = useState<'1' | '2' | '4'>('2');
   const [renderIds, setRenderIds] = useState<string[]>([]);
+  // Comienzo y cierre del cajetín: se proponen los del evento y se pueden
+  // cambiar para este PDF (por ejemplo, el horario de apertura al público).
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const resetSchedule = () => {
+    setStartAt(toLocalInput(event?.starts_at));
+    setEndAt(toLocalInput(event?.ends_at));
+  };
+  useEffect(() => {
+    if (open) {
+      setStartAt(toLocalInput(event?.starts_at));
+      setEndAt(toLocalInput(event?.ends_at));
+    }
+  }, [open, event?.starts_at, event?.ends_at]);
+  const scheduleBackwards = Boolean(startAt && endAt && endAt < startAt);
   const [renders, setRenders] = useState<RenderPhoto[]>([]);
   const [loadingRenders, setLoadingRenders] = useState(false);
   const embedded = useRef(new Map<string, RenderPhoto>());
@@ -279,6 +303,7 @@ export function ExportPlanModal({
               furniture: showcase ? furniture : true,
               description: showcase ? description : '',
               photosPerPage: Number(perPage) as 1 | 2 | 4,
+              schedule: startAt || endAt ? { start: startAt, end: endAt } : null,
               paper,
               scale,
               photo,
@@ -298,7 +323,7 @@ export function ExportPlanModal({
         : null,
     [
       open, plan, event, objects, connections, venues, photos, zones, author, material, categoryNames,
-      materialByZone, byZone, docKind, showcase, furniture, description, perPage, renders,
+      materialByZone, byZone, docKind, showcase, furniture, description, perPage, renders, startAt, endAt,
       paper, scale, photo, cables, venue, showZones, zoneStyle, zoneNumberSize, feeds, marks, withMaterial, markMissing, view,
     ],
   );
@@ -471,6 +496,45 @@ export function ExportPlanModal({
                 { value: 'showcase', label: 'Muestra' },
               ]}
             />
+          </Field>
+          <Field
+            label="Comienzo y cierre"
+            hint={
+              scheduleBackwards
+                ? 'El cierre es anterior al comienzo.'
+                : 'Salen en el cajetín de todas las hojas. Se proponen los del evento.'
+            }
+          >
+            <div className="grid gap-1.5">
+              <label className="flex items-center gap-2 text-[12px] text-muted">
+                <span className="w-[62px] shrink-0">Comienzo</span>
+                <Input
+                  type="datetime-local"
+                  value={startAt}
+                  onChange={(e) => setStartAt(e.target.value)}
+                  aria-label="Fecha y hora de comienzo"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-muted">
+                <span className="w-[62px] shrink-0">Cierre</span>
+                <Input
+                  type="datetime-local"
+                  value={endAt}
+                  onChange={(e) => setEndAt(e.target.value)}
+                  aria-label="Fecha y hora de cierre"
+                />
+              </label>
+              {event &&
+              (startAt !== toLocalInput(event.starts_at) || endAt !== toLocalInput(event.ends_at)) ? (
+                <button
+                  type="button"
+                  onClick={resetSchedule}
+                  className="justify-self-start text-[11.5px] text-accent-soft hover:underline"
+                >
+                  Volver a las del evento
+                </button>
+              ) : null}
+            </div>
           </Field>
           {showcase ? (
             <>

@@ -87,6 +87,12 @@ export interface ExportOptions {
   description?: string;
   /** Fotos del render por hoja en la muestra. */
   photosPerPage?: 1 | 2 | 4;
+  /**
+   * Comienzo y cierre que salen en el cajetín (fecha y hora, como en un
+   * <input type="datetime-local">). Sin ellos, el cajetín da los días del
+   * evento.
+   */
+  schedule?: { start: string; end: string } | null;
 }
 
 /** Una foto del render para la muestra, ya incrustada (data URL) y con su tamaño. */
@@ -812,7 +818,19 @@ function titleBlock(d: Drawing, sh: Sheet, page: number, pages: number, kind: st
     return a === b ? a : `${a} – ${b}`;
   })();
   const now = new Date();
-  const generated = `${day(now)} · ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+  const time = (v: string | Date) =>
+    new Date(v).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const generated = `${day(now)} · ${time(now)}`;
+  // Comienzo y cierre con su hora, si se han puesto (o vienen del evento).
+  const stamp = (v: string | undefined) =>
+    v && !Number.isNaN(new Date(v).getTime()) ? `${day(v)} · ${time(v)}` : '—';
+  const sched = d.options.schedule;
+  const dates: [string, string][] = sched
+    ? [
+        ['COMIENZO', stamp(sched.start)],
+        ['CIERRE', stamp(sched.end)],
+      ]
+    : [['FECHA EVENTO', eventDate]];
   const fields: [string, string][] = [
     ['EVENTO', ev?.name ?? '—'],
     [
@@ -824,7 +842,7 @@ function titleBlock(d: Drawing, sh: Sheet, page: number, pages: number, kind: st
           : `Material · ${d.input.plan.name}`,
     ],
     ['LUGAR', ev?.location || '—'],
-    ['FECHA EVENTO', eventDate],
+    ...dates,
     ['GENERADO', generated],
     ['ESCALA', kind === 'PLANO' ? `1:${sh.denom}` : '—'],
     ['FORMATO', `${d.options.paper} · medidas en m`],
